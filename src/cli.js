@@ -1,6 +1,5 @@
 //#region Imports
 // Library ----------------------------------------------------------------------------------
-import electron from 'electron';
 import { Logger } from './lib/logger';
 import { FilePaths } from './lib/file-paths.js';
 import { PuppeteerWrapper } from './lib/puppeteer-wrapper';
@@ -16,10 +15,8 @@ import moment from 'moment';
 //#endregion
 
 //#region Setup - Dependency Injection-----------------------------------------------
-const _setting = new JSONdb('./settings.json');
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _ipcRenderer = electron.ipcRenderer;
 const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 let scrapedData = [];
@@ -28,153 +25,16 @@ let scrapedData = [];
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	await setPlatformText();
+	const searchQuery = process.argv.slice(2);
+	const searchLimit = process.argv.slice(3) || 5;
 
-	$('#licenseToText').text(_setting.get('user_email'));
-
-	$('#searchBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		console.log('Mulai');
-
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		const searchQuery = $('input#searchBusiness').val();
-		const searchLimit = parseInt($('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		$('input#searchBusiness').attr('disabled', 'disabled');
-		$('input#searchLimit').attr('disabled', 'disabled');
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	$('#stopBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		await _puppeteerWrapper.cleanup();
-
-		$('#searchBtn').removeAttr('disabled');
-		$(e.target).attr('disabled', 'disabled');
-		$('#restartBtn').attr('disabled', 'disabled');
-
-		$('input#searchBusiness').removeAttr('disabled');
-		$('input#searchLimit').removeAttr('disabled');
-	});
-
-	$('#restartBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		await _puppeteerWrapper.cleanup();
-
-		const searchQuery = $('input#searchBusiness').val();
-		const searchLimit = parseInt($('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	$('#exportBtn').on('click', async (e) => {
-		_ipcRenderer.send('export-to-xlsx', scrapedData);
-	});
-
-	$('#clearBtn').on('click', async (e) => {
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		await loadWebViewPage("https://www.google.com/maps/");
-	});
-
-	$('#licenseForm').on('submit', async (e) => {
-		e.preventDefault();
-
-		const email = $('#emailAddress').val();
-		const key = $('#licenseKey').val();
-
-		validateLicense(email, key);
-	});
-}
-
-async function setPlatformText() {
-	$('#systemInfo').text(os.type() + " " + " " + os.platform() + " " + " " + os.arch() + " " + os.release() + " / Mac Address " + await getMacAddress());
-}
-
-async function getMacAddress() {
-	const interfaces = os.networkInterfaces();
-	let macAddress = '00:00:00:00:00';
-
-	console.log(interfaces);
-
-	for (const key in interfaces) {
-		if (interfaces.hasOwnProperty('Wi-Fi') ||
-			interfaces.hasOwnProperty('en1') ||
-			interfaces.hasOwnProperty('wlan0')) {
-			const wirelessNetwork = interfaces['Wi-Fi'] || interfaces['en1'] || interfaces['wlan0'];
-			wirelessNetwork.forEach(ifcs => {
-				if (ifcs.hasOwnProperty('mac'))
-					macAddress = ifcs['mac'];
-			});
-		}
-	}
-
-	return macAddress.toUpperCase();
-}
-
-async function validateLicense(email, licenseKey) {
-	let signature = _setting.get('signature');
-
-	if (signature == undefined || signature == '') {
-		console.log('Generate a new signature hash.');
-
-		const signatureParams = os.hostname() + "-" + getMacAddress();
-		const signatureHash = md5(signatureParams);
-
-		_setting.set('signature', signatureHash);
-
-		signature = signatureHash;
-	}
-
-	const baseUrl = _setting.get("license_server_url") || 'https://license.pirantisofthouse.com';
-	const licenseServerUrl = `${baseUrl}/license-key/get?email=${email}&key=${licenseKey}&signature_hash=${signature}`;
-
-	try {
-		const response = await axios.get(licenseServerUrl);
-		const licenseData = response.data;
-		const status = licenseData.status;
-
-		_setting.set('user_email', email);
-		_setting.set('user_license', licenseKey);
-
-		if (status === 1)
-			_ipcRenderer.send('license-updated', "success");
-		else
-			_ipcRenderer.send('license-updated', "failed");
-	} catch (ex) {
-		console.log(ex);
-	}
+	await GMapScrapper(searchQuery, searchLimit);
 }
 
 async function getPageData(url, page) {
 	console.log(`Processing ${url}...`);
 
 	await page.goto(url);
-
-	//await loadWebViewPage(url);
 
 	//Shop Name
 	await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
@@ -283,7 +143,6 @@ async function getPageData(url, page) {
 	}
 
 	return returnObj;
-	//await browser.close();
 }
 
 const getImages = async (page) => {
@@ -478,34 +337,18 @@ async function getLatLong(url) {
 	return latLongData.split(":");
 }
 
-async function loadWebViewPage(url) {
-	const webview = document.getElementById('gmapWv');
-	await webview.loadURL(url);
-
-	webview.removeEventListener('dom-ready', loadWebViewPage);
-	webview.addEventListener('dom-ready', loadWebViewPage);
-}
-
 async function GMapScrapper(searchQuery = "", maxLinks = 100) {
-	console.log('Start scrapping data.');
+	console.log(`Start scrapping data with query "${searchQuery}"`);
 
 	// Make sure this variable empty
 	scrapedData = [];
 
-	$('#searchBtn').attr('disabled', 'disabled');
-	$('#stopBtn').removeAttr('disabled');
-	$('#restartBtn').removeAttr('disabled');
-	$('span#statusTxt').removeClass('text-success').addClass('text-danger').html('<img src="res/images/loader.gif" width="20" height="20"> Mulai scraping listing...');
-
 	const page = await _puppeteerWrapper.newPage();
 
-	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now(); // + searchQuery.replace(/\s/g, '+');
-
-	await loadWebViewPage(gmapInitUrl + "?q=" + searchQuery.replace(/\s/g, '+'));
+	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now();
 
 	page.on('response', response => {
 		const status = response.status();
-		console.log(status)
 		if ((status >= 300) && (status <= 399)) {
 			console.log('Redirect from', response.url(), 'to', response.headers()['location'])
 		}
@@ -553,18 +396,9 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 			break;
 		}
 
-		linkCount = allLinks.length;
-
-		$('span#statusTxt').removeClass('text-danger').addClass('text-warning').html('<img src="res/images/loader.gif" width="20" height="20"> Mengumpulkan listing...');
-
-		if (maxLinks == 0) {
-			$('#resultCountText').text(linkCount);
-		} else {
-			$('#resultCountText').text(linkCount > maxLinks ? maxLinks : linkCount);
-		}
 	}
 
-	$('#resultsTable tbody').html('<tr><td class="text-center" colspan="9"><p class="m-0 p-0"><img src="res/images/loader.gif" width="20" height="20"> Sedang melakukan validasi listing yang didapat...</p></td></tr>');
+	console.log("Validating results...");
 
 	console.log("All Links ", allLinks.length);
 
@@ -576,13 +410,9 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	$('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> Validasi listing...');
-
 	await delay(2000);
 
 	console.log("Filtered Links ", uniqueLinks.length);
-
-	$('#resultCountText').text(uniqueLinks.length);
 
 	let no = 1;
 	let successCount = 0;
@@ -590,26 +420,17 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 	for (let link of uniqueLinks) {
 		if (maxLinks !== 0 && no > maxLinks) break;
 
-		$('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> #' + no + ' Memproses "' + link + '"');
+		console.log('#' + no + ' Processing: "' + link + '...');
 
 		try {
 			const data = await getPageData(link, page);
+
 			if (no === 1) $('#resultsTable tbody').empty();
 
-			$('#resultsTable tbody').append(`
-				<tr>
-					<th scope="row">${no}</th>
-					<td>${data.shop}</td>
-					<td>${data.address}</td>
-					<td>${data.phone}</td>
-					<td>${data.website}</td>
-					<td>${data.rating}</td>
-					<td>${data.reviews}</td>
-					<td>${data.latitude}</td>
-					<td>${data.longitude}</td>
-				</tr>
-			`);
+			console.log("Scraped data: ", data);
+
 			scrapedData.push(data);
+
 			no++;
 			successCount++;
 		} catch (ex) {
@@ -620,33 +441,20 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		await delay.range(100, 1000);
 	}
 
-	$('#searchBtn').removeAttr('disabled');
-	$('#stopBtn').attr('disabled', 'disabled');
-	$('#restartBtn').attr('disabled', 'disabled');
-
-	$('input#searchBusiness').removeAttr('disabled');
-	$('input#searchLimit').removeAttr('disabled');
-
 	await _puppeteerWrapper.cleanup();
 
 	const doneMessage = `Proses scraping dengan kata kunci "${searchQuery}" telah selesai dengan statistik berikut: ${successCount} berhasil, ${failedCount} gagal`;
 
-	$('span#statusTxt').removeClass('text-danger').addClass('text-success').text(doneMessage);
-
-	_ipcRenderer.send('scraping-done', doneMessage);
+	console.log(doneMessage);
 }
-
-_ipcRenderer.on('chrome-path-is-set', (event, arg) => {
-	$('span#chromeInfo').addClass('text-success').text(arg);
-});
 
 (async () => {
 	try {
 		const chromeSet = await _puppeteerWrapper.setup();
 		if (!chromeSet) {
-			_ipcRenderer.send('chrome-not-found');
+			console.error("Chrome not found!");
 		} else {
-			$('span#chromeInfo').addClass('text-success').text(_puppeteerWrapper._getSavedPath());
+			console.log(_puppeteerWrapper._getSavedPath());
 		}
 
 		await main();
@@ -657,7 +465,7 @@ _ipcRenderer.on('chrome-path-is-set', (event, arg) => {
 		await _puppeteerWrapper.cleanup();
 	}
 
-	_logger.logInfo('Done. Close window to exit');
+	console.log('Done. Close window to exit');
 
 	await _logger.exportLogs(_filePaths.logsPath());
 })();

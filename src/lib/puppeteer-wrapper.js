@@ -81,25 +81,29 @@ export class PuppeteerWrapper {
 
     //#region Helpers
     async _intercept(page) {
-        const client = await page.target().createCDPSession();
+        try{
+            const client = await page.target().createCDPSession();
 
-        await client.send('Network.enable');
+            await client.send('Network.enable');
 
-        // added configuration
-        await client.send('Network.setRequestInterception', {
-            patterns: [{ urlPattern: '*' }],
-        });
-
-        await client.on('Network.requestIntercepted', async e => {
-            // console.log('EVENT INFO: ');
-            // console.log(e.interceptionId);
-            // console.log(e.resourceType);
-            // console.log(e.isNavigationRequest);
-
-            await client.send('Network.continueInterceptedRequest', {
-                interceptionId: e.interceptionId,
+            // added configuration
+            await client.send('Network.setRequestInterception', {
+                patterns: [{ urlPattern: '*' }],
             });
-        });
+
+            await client.on('Network.requestIntercepted', async e => {
+                // console.log('EVENT INFO: ');
+                // console.log(e.interceptionId);
+                // console.log(e.resourceType);
+                // console.log(e.isNavigationRequest);
+
+                await client.send('Network.continueInterceptedRequest', {
+                    interceptionId: e.interceptionId,
+                });
+            });
+        } catch (exception) {
+
+        }
     }
 
     async _setChromePath() {

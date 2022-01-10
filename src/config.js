@@ -8,10 +8,20 @@ const CSS_SELECTOR = {
 	'address_backup': "#pane > div > div > div > div > div > div > button > div > div > div",
 	'website': 'button[data-item-id="authority"] div.QSFF4-text',
 	'phone': 'button[data-item-id^="phone"]',
+	'reviews_btn': 'button[jsaction="pane.reviewlist.goToReviews"]',
+	'reviews_item': 'div[jsaction="mouseover:pane.review.in;mouseout:pane.review.out"]',
 };
+const DB_HOST = 'localhost';
+const DB_NAME = 'finland_places';
+const DB_USER = 'root';
+const DB_PASSWORD = 'rootpassword';
 
 export {
 	APP_NAME,
 	APP_VERSION,
 	CSS_SELECTOR,
+	DB_HOST,
+	DB_NAME,
+	DB_USER,
+	DB_PASSWORD,
 };

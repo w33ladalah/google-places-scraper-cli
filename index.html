@@ -65,8 +65,9 @@
                                 </div>
                                 <div class="col-auto">
                                     <select class="form-control" name="searchLimit" id="searchLimit">
+                                        <option value="5" selected>5</option>
                                         <option value="10">10</option>
-                                        <option value="25" selected>25</option>
+                                        <option value="25">25</option>
                                         <option value="50">50</option>
                                         <option value="75">75</option>
                                         <option value="100">100</option>
@@ -137,8 +138,10 @@
         <script>
 require('./babel-output/config.js');
 require('./babel-output/index.js');
+require('./babel-output/lib/db.js');
 require('./babel-output/lib/file-paths.js');
 require('./babel-output/lib/logger.js');
+require('./babel-output/lib/model.js');
 require('./babel-output/lib/puppeteer-wrapper.js');
 </script>
     </body>
