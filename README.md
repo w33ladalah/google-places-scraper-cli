@@ -1,3 +1,3 @@
-# Google Place Scraper
+# Google Place Scraper CLI
 
-This simple desktop application to scrape Google Place or Business from Google Maps using Puppeteer and Electron.
+The Pupetteer implementation to scrape places from Google Map and place reviews.
