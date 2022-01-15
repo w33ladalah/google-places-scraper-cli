@@ -1,9 +1,5 @@
 'use strict';
 
-var _electron = require('electron');
-
-var _electron2 = _interopRequireDefault(_electron);
-
 var _logger2 = require('./lib/logger');
 
 var _filePaths2 = require('./lib/file-paths.js');
@@ -12,29 +8,17 @@ var _puppeteerWrapper2 = require('./lib/puppeteer-wrapper');
 
 var _config = require('./config');
 
+var _model = require('./lib/model');
+
+var _model2 = _interopRequireDefault(_model);
+
 var _jquery = require('jquery');
 
 var _jquery2 = _interopRequireDefault(_jquery);
 
-var _simpleJsonDb = require('simple-json-db');
-
-var _simpleJsonDb2 = _interopRequireDefault(_simpleJsonDb);
-
-var _axios = require('axios');
-
-var _axios2 = _interopRequireDefault(_axios);
-
 var _delay = require('delay');
 
 var _delay2 = _interopRequireDefault(_delay);
-
-var _os = require('os');
-
-var _os2 = _interopRequireDefault(_os);
-
-var _md = require('md5');
-
-var _md2 = _interopRequireDefault(_md);
 
 var _date = require('date.js');
 
@@ -49,165 +33,92 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 //#endregion
 
 //#region Setup - Dependency Injection-----------------------------------------------
-const _setting = new _simpleJsonDb2.default('./settings.json'); //#region Imports
+const _logger = new _logger2.Logger(); //#region Imports
 // Library ----------------------------------------------------------------------------------
 
-const _logger = new _logger2.Logger();
 const _filePaths = new _filePaths2.FilePaths(_logger, "gmap-scrapper");
-const _ipcRenderer = _electron2.default.ipcRenderer;
-const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new _puppeteerWrapper2.PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
-let scrapedData = [];
 //#endregion
+
+const countryCode = 'FI';
 
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	await setPlatformText();
+	const searchLimit = parseInt(process.argv[2] || 0);
+	const cities = await _model2.default.CityName.findAll();
+	const categories = await _model2.default.CategoryName.findAll();
+	const keywords = [];
 
-	(0, _jquery2.default)('#licenseToText').text(_setting.get('user_email'));
-
-	(0, _jquery2.default)('#searchBtn').on('click', async e => {
-		e.preventDefault();
-
-		console.log('Mulai');
-
-		(0, _jquery2.default)('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		(0, _jquery2.default)('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		(0, _jquery2.default)('#resultCountText').text('0');
-
-		const searchQuery = (0, _jquery2.default)('input#searchBusiness').val();
-		const searchLimit = parseInt((0, _jquery2.default)('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		(0, _jquery2.default)('input#searchBusiness').attr('disabled', 'disabled');
-		(0, _jquery2.default)('input#searchLimit').attr('disabled', 'disabled');
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	(0, _jquery2.default)('#stopBtn').on('click', async e => {
-		e.preventDefault();
-
-		await _puppeteerWrapper.cleanup();
-
-		(0, _jquery2.default)('#searchBtn').removeAttr('disabled');
-		(0, _jquery2.default)(e.target).attr('disabled', 'disabled');
-		(0, _jquery2.default)('#restartBtn').attr('disabled', 'disabled');
-
-		(0, _jquery2.default)('input#searchBusiness').removeAttr('disabled');
-		(0, _jquery2.default)('input#searchLimit').removeAttr('disabled');
-	});
-
-	(0, _jquery2.default)('#restartBtn').on('click', async e => {
-		e.preventDefault();
-
-		(0, _jquery2.default)('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		(0, _jquery2.default)('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		(0, _jquery2.default)('#resultCountText').text('0');
-
-		await _puppeteerWrapper.cleanup();
-
-		const searchQuery = (0, _jquery2.default)('input#searchBusiness').val();
-		const searchLimit = parseInt((0, _jquery2.default)('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	(0, _jquery2.default)('#exportBtn').on('click', async e => {
-		_ipcRenderer.send('export-to-xlsx', scrapedData);
-	});
-
-	(0, _jquery2.default)('#clearBtn').on('click', async e => {
-		(0, _jquery2.default)('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		(0, _jquery2.default)('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		(0, _jquery2.default)('#resultCountText').text('0');
-
-		await loadWebViewPage("https://www.google.com/maps/");
-	});
-
-	(0, _jquery2.default)('#licenseForm').on('submit', async e => {
-		e.preventDefault();
-
-		const email = (0, _jquery2.default)('#emailAddress').val();
-		const key = (0, _jquery2.default)('#licenseKey').val();
-
-		validateLicense(email, key);
-	});
-}
-
-async function setPlatformText() {
-	(0, _jquery2.default)('#systemInfo').text(_os2.default.type() + " " + " " + _os2.default.platform() + " " + " " + _os2.default.arch() + " " + _os2.default.release() + " / Mac Address " + (await getMacAddress()));
-}
-
-async function getMacAddress() {
-	const interfaces = _os2.default.networkInterfaces();
-	let macAddress = '00:00:00:00:00';
-
-	console.log(interfaces);
-
-	for (const key in interfaces) {
-		if (interfaces.hasOwnProperty('Wi-Fi') || interfaces.hasOwnProperty('en1') || interfaces.hasOwnProperty('wlan0')) {
-			const wirelessNetwork = interfaces['Wi-Fi'] || interfaces['en1'] || interfaces['wlan0'];
-			wirelessNetwork.forEach(ifcs => {
-				if (ifcs.hasOwnProperty('mac')) macAddress = ifcs['mac'];
+	cities.forEach(async city => {
+		categories.forEach(async category => {
+			const searchQuery = `${category.name} in ${city.name}, Finland`;
+			keywords.push({
+				query: searchQuery,
+				city: city.id,
+				category: category.id
 			});
-		}
-	}
+		});
+	});
 
-	return macAddress.toUpperCase();
-}
+	for (let i = 0; i < keywords.length; i++) {
+		const keyword = keywords[i];
 
-async function validateLicense(email, licenseKey) {
-	let signature = _setting.get('signature');
-
-	if (signature == undefined || signature == '') {
-		console.log('Generate a new signature hash.');
-
-		const signatureParams = _os2.default.hostname() + "-" + getMacAddress();
-		const signatureHash = (0, _md2.default)(signatureParams);
-
-		_setting.set('signature', signatureHash);
-
-		signature = signatureHash;
-	}
-
-	const baseUrl = _setting.get("license_server_url") || 'https://license.pirantisofthouse.com';
-	const licenseServerUrl = `${baseUrl}/license-key/get?email=${email}&key=${licenseKey}&signature_hash=${signature}`;
-
-	try {
-		const response = await _axios2.default.get(licenseServerUrl);
-		const licenseData = response.data;
-		const status = licenseData.status;
-
-		_setting.set('user_email', email);
-		_setting.set('user_license', licenseKey);
-
-		if (status === 1) _ipcRenderer.send('license-updated', "success");else _ipcRenderer.send('license-updated', "failed");
-	} catch (ex) {
-		console.log(ex);
+		await GMapScrapper(keyword.query, searchLimit, keyword.city, keyword.category);
+		await _delay2.default.range(1000, 6000);
 	}
 }
 
-async function getPageData(url, page) {
+const changeLocation = async (countryCode, page) => {
+	const locationMenuSelector = 'button[jsaction="fineprint.country"]';
+
+	await page.waitForSelector(locationMenuSelector);
+	await page.click(locationMenuSelector);
+
+	const moreRegionLinkSelector = 'a#regionanchormore';
+	await page.waitForSelector(moreRegionLinkSelector, { waitUntil: 'networkidle2' });
+	await page.waitForTimeout(1000);
+	await page.click(moreRegionLinkSelector);
+
+	await page.waitForSelector('#regionother');
+
+	await page.waitForTimeout(1000);
+
+	await page.click(`div[data-value="${countryCode}"`);
+	await page.waitForTimeout(1000);
+	await page.click('div.jfk-button:nth-child(1)');
+};
+
+const changeLanguage = async page => {
+	const locationMenuSelector = 'button[jsaction="fineprint.country"]';
+
+	await page.waitForSelector(locationMenuSelector);
+	await page.click(locationMenuSelector);
+
+	await page.waitForTimeout(1000);
+
+	await page.waitForSelector('a[aria-controls="langSec"]');
+	await page.click('a[aria-controls="langSec"]');
+
+	await page.waitForTimeout(1000);
+
+	await page.waitForSelector('a#langanchormore');
+	await page.click(`div[data-value="en"`);
+
+	await page.waitForTimeout(1000);
+
+	await page.click('div.jfk-button:nth-child(1)');
+};
+
+const getPageData = async (url, page) => {
 	console.log(`Processing ${url}...`);
 
 	await page.goto(url);
 
-	//await loadWebViewPage(url);
-
 	//Shop Name
 	await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
-	const shopName = await page.$eval(_config.CSS_SELECTOR['shop_name'], name => name.textContent);
+	const itemName = await page.$eval(_config.CSS_SELECTOR['shop_name'], name => name.textContent);
 
 	await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
 	const reviewRating = await page.$eval(_config.CSS_SELECTOR['rating'], rating => rating.textContent);
@@ -243,10 +154,10 @@ async function getPageData(url, page) {
 
 	console.log(phone || 'No phone');
 
-	const latLong = await getLatLong(url);
+	const latLong = getLatLong(url);
 
 	//Hours of works
-	const workHours = await getWorkHours(page);
+	const workHours = JSON.stringify((await getWorkHours(page)));
 
 	//Images
 	const images = await getImages(page);
@@ -258,66 +169,70 @@ async function getPageData(url, page) {
 
 	try {
 		returnObj = {
-			shop: shopName.trim(),
+			name: itemName.trim(),
 			rating: reviewRating === undefined ? '' : reviewRating.trim(),
 			reviews: reviewCount,
 			address: address === undefined ? '' : address.trim(),
 			website: website === undefined ? '' : website.trim(),
 			phone: phone === undefined ? '' : phone.trim().replace(/\-/g, ''),
-			latitude: latLong[0],
-			longitude: latLong[1],
-			main_image: images[0],
+			latitude: (latLong[0] || "").toString().substring(0, 15),
+			longitude: (latLong[1] || "").toString().substring(0, 15),
+			main_image: images[0] || '',
 			all_images: images,
 			all_reviews: allReviews,
 			workHours: workHours
 		};
-
-		console.log(returnObj);
 	} catch (exception) {
 		console.log(exception);
 	}
 
 	return returnObj;
-	//await browser.close();
-}
+};
 
 const getImages = async page => {
-	await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.click('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.waitForNavigation({ waitUntil: "networkidle0" });
+	try {
+		console.log("Getting images...");
 
-	let newScrollHeight = 0;
-	let scrollHeight = _puppeteerConfig['height'] - 200;
-	// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
-	let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
+		await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]', { timeout: 5000 });
+		await page.click('button[jsaction="pane.heroHeaderImage.click"]');
+		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
-	while (true) {
-		await page.waitForSelector(divSelector);
+		let newScrollHeight = 0;
+		let scrollHeight = _puppeteerConfig['height'] - 200;
+		// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
+		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
-		await page.evaluate((scrollHeight, divSelector) => document.querySelector(divSelector).scrollTo(0, scrollHeight), scrollHeight, divSelector);
+		while (true) {
+			await page.waitForSelector(divSelector);
 
-		await page.waitForTimeout(800);
+			await page.evaluate((scrollHeight, divSelector) => document.querySelector(divSelector).scrollTo(0, scrollHeight), scrollHeight, divSelector);
 
-		newScrollHeight = await page.$eval(divSelector, div => div.scrollHeight);
+			await page.waitForTimeout(800);
 
-		if (scrollHeight === newScrollHeight) {
-			break;
-		} else {
-			scrollHeight = newScrollHeight;
+			newScrollHeight = await page.$eval(divSelector, div => div.scrollHeight);
+
+			if (scrollHeight === newScrollHeight) {
+				break;
+			} else {
+				scrollHeight = newScrollHeight;
+			}
 		}
+
+		const images = await page.$$eval('a[data-photo-index] div.loaded', divs => {
+			return Array.from(divs).map(div => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replaceAll('"', ''));
+		});
+
+		console.log("Images: ", images);
+
+		await page.waitForTimeout(2000);
+		await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
+		await page.waitForNavigation({ waitUntil: "networkidle0" });
+
+		return images;
+	} catch (ex) {
+		console.error(ex);
+		return [];
 	}
-
-	const images = await page.$$eval('a[data-photo-index] div.loaded', divs => {
-		return Array.from(divs).map(div => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replace('"', ''));
-	});
-
-	console.log("Images: ", images);
-
-	await page.waitForTimeout(2000);
-	await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
-	await page.waitForNavigation({ waitUntil: "networkidle0" });
-
-	return images;
 };
 
 const getReviews = async page => {
@@ -349,25 +264,66 @@ const getReviews = async page => {
 			}
 		}
 
+		await page.$$eval('[jsaction="pane.review.expandReview"]', async elHandles => {
+			elHandles.forEach(el => el.click());
+			await (0, _delay2.default)(700);
+		});
+
 		const reviews = await page.$$eval('div.ODSEW-ShBeI-content', divs => Array.from(divs).map(div => {
+			const replaceString = {
+				"setahun": "a year",
+				"sebulan": "a month",
+				"seminggu": "a week",
+				"sehari": "a day",
+				"sejam": "an hour",
+				"semenit": "a minute",
+				"tahun": "years",
+				"bulan": "months",
+				"minggu": "weeks",
+				"hari": "days",
+				"jam": "hours",
+				"menit": "minutes",
+				"lalu": "ago"
+			};
+			let dateInEnglish = div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim();
+
+			for (const key in replaceString) {
+				if (Object.hasOwnProperty.call(replaceString, key)) {
+					const replacement = replaceString[key];
+					dateInEnglish = dateInEnglish.replace(key, replacement);
+				}
+			}
+
+			const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
+			const startTrimIndex = reviewText.indexOf('(Original)') + 10;
+
 			return {
 				author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
+				title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 				avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
-				rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars').replace('bintang').trim(),
-				date: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim(),
-				text: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim()
+				rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('bintang', '').trim(),
+				text: reviewText.substring(startTrimIndex).trim(),
+				date: dateInEnglish
 			};
 		}));
-
-		console.log((0, _moment2.default)((0, _date2.default)('a year ago')).format('YYYY-mm-dd HH:MM:SS'));
 
 		await page.waitForTimeout(2000);
 		await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
 		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
-		return reviews;
+		const reviewData = [];
+
+		for (let i = 0; i < reviews.length; i++) {
+			const review = reviews[i];
+			review['date'] = (0, _moment2.default)((0, _date2.default)(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
+			reviewData.push(review);
+		}
+
+		// console.log("Reviews data: ", reviewData);
+
+		return reviewData;
 	} catch (ex) {
-		console.error("No reviews found.");
+		console.error(ex);
 		return [];
 	}
 };
@@ -421,49 +377,61 @@ const getLinks = async page => {
 	return searchResults;
 };
 
-async function getLatLong(url) {
-	const latLongStartIndex = url.indexOf('!3d-') + 4;
-	const latLongEndIndex = url.indexOf('?');
-	const latLongData = url.substring(latLongStartIndex, latLongEndIndex).replace('!4d', ':');
+const getLatLong = url => {
+	let latLongStartIndex = url.indexOf('!3d') + 4;
+	let latLongEndIndex = url.indexOf('?');
+	let latLongData = url.substring(latLongStartIndex, latLongEndIndex).split('!4d');
 
-	return latLongData.split(":");
-}
+	if (isNaN(latLongData[0]) || isNaN(latLongData[1])) {
+		latLongStartIndex = url.indexOf('/@') + 2;
+		latLongEndIndex = url.indexOf(',15z');
+		latLongData = url.substring(latLongStartIndex, latLongEndIndex).split(",");
+	}
 
-async function loadWebViewPage(url) {
-	const webview = document.getElementById('gmapWv');
-	await webview.loadURL(url);
+	return latLongData;
+};
 
-	webview.removeEventListener('dom-ready', loadWebViewPage);
-	webview.addEventListener('dom-ready', loadWebViewPage);
-}
+const slugify = str => {
+	str = str.replace(/^\s+|\s+$/g, ''); // trim
+	str = str.toLowerCase();
 
-async function GMapScrapper(searchQuery = "", maxLinks = 100) {
-	console.log('Start scrapping data.');
+	// remove accents, swap ñ for n, etc
+	var from = "àáäâèéëêìíïîòóöôùúüûñç·/_,:;";
+	var to = "aaaaeeeeiiiioooouuuunc------";
+	for (var i = 0, l = from.length; i < l; i++) {
+		str = str.replace(new RegExp(from.charAt(i), 'g'), to.charAt(i));
+	}
 
-	// Make sure this variable empty
-	scrapedData = [];
+	str = str.replace(/[^a-z0-9 -]/g, '') // remove invalid chars
+	.replace(/\s+/g, '-') // collapse whitespace and replace by -
+	.replace(/-+/g, '-'); // collapse dashes
 
-	(0, _jquery2.default)('#searchBtn').attr('disabled', 'disabled');
-	(0, _jquery2.default)('#stopBtn').removeAttr('disabled');
-	(0, _jquery2.default)('#restartBtn').removeAttr('disabled');
-	(0, _jquery2.default)('span#statusTxt').removeClass('text-success').addClass('text-danger').html('<img src="res/images/loader.gif" width="20" height="20"> Mulai scraping listing...');
+	return str;
+};
+
+async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
+	console.log(`Start scrapping data with query "${searchQuery}"`);
 
 	const page = await _puppeteerWrapper.newPage();
 
-	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now(); // + searchQuery.replace(/\s/g, '+');
-
-	await loadWebViewPage(gmapInitUrl + "?q=" + searchQuery.replace(/\s/g, '+'));
+	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now();
 
 	page.on('response', response => {
 		const status = response.status();
-		console.log(status);
 		if (status >= 300 && status <= 399) {
 			console.log('Redirect from', response.url(), 'to', response.headers()['location']);
 		}
 	});
 
+	page.on('dialog', async dialog => {
+		await (0, _delay2.default)(1000);
+		await dialog.accept();
+	});
+
 	try {
 		await page.goto(gmapInitUrl, { waitUntil: 'networkidle0' });
+		await changeLocation(countryCode, page);
+		await changeLanguage(page);
 	} catch (ex) {
 		console.log(ex);
 		await page.waitForTimeout(800);
@@ -496,16 +464,10 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 
 		linkCount = allLinks.length;
 
-		(0, _jquery2.default)('span#statusTxt').removeClass('text-danger').addClass('text-warning').html('<img src="res/images/loader.gif" width="20" height="20"> Mengumpulkan listing...');
-
-		if (maxLinks == 0) {
-			(0, _jquery2.default)('#resultCountText').text(linkCount);
-		} else {
-			(0, _jquery2.default)('#resultCountText').text(linkCount > maxLinks ? maxLinks : linkCount);
-		}
+		console.log(`Links count: ${linkCount}`);
 	}
 
-	(0, _jquery2.default)('#resultsTable tbody').html('<tr><td class="text-center" colspan="9"><p class="m-0 p-0"><img src="res/images/loader.gif" width="20" height="20"> Sedang melakukan validasi listing yang didapat...</p></td></tr>');
+	console.log("Validating results...");
 
 	console.log("All Links ", allLinks.length);
 
@@ -517,13 +479,9 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	(0, _jquery2.default)('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> Validasi listing...');
-
 	await (0, _delay2.default)(2000);
 
 	console.log("Filtered Links ", uniqueLinks.length);
-
-	(0, _jquery2.default)('#resultCountText').text(uniqueLinks.length);
 
 	let no = 1;
 	let successCount = 0;
@@ -531,29 +489,77 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 	for (let link of uniqueLinks) {
 		if (maxLinks !== 0 && no > maxLinks) break;
 
-		(0, _jquery2.default)('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> #' + no + ' Memproses "' + link + '"');
+		console.log('#' + no + ' Processing: "' + link + '...');
 
 		try {
-			const data = await getPageData(link, page);
-			if (no === 1) (0, _jquery2.default)('#resultsTable tbody').empty();
+			const item = await _model2.default.Item.findOne({ where: { link: link } });
+			if (item == null) {
+				const data = await getPageData(link, page);
+				const item = await _model2.default.Item.create({
+					name: data.name,
+					slug: slugify(data.name),
+					address: data.address,
+					latitude: data.latitude,
+					longitude: data.longitude,
+					address: data.address,
+					hours_of_work: data.workHours,
+					website: data.website,
+					image_remote: data.main_image,
+					image: data.main_image,
+					date_created: (0, _moment2.default)().format('YYYY-MM-DD HH:mm:ss').toString(),
+					item_city: city,
+					link: link
+				});
 
-			(0, _jquery2.default)('#resultsTable tbody').append(`
-				<tr>
-					<th scope="row">${no}</th>
-					<td>${data.shop}</td>
-					<td>${data.address}</td>
-					<td>${data.phone}</td>
-					<td>${data.website}</td>
-					<td>${data.rating}</td>
-					<td>${data.reviews}</td>
-					<td>${data.latitude}</td>
-					<td>${data.longitude}</td>
-				</tr>
-			`);
-			scrapedData.push(data);
+				console.log("Item created: ", item);
+
+				await _model2.default.City.create({
+					cities_names_id: city,
+					items_id: item.id
+				});
+
+				const existingItemCategory = await _model2.default.Category.findOne({ where: { items_id: item.id } });
+				if (existingItemCategory == null) {
+					await _model2.default.Category.create({
+						categories_names_id: category,
+						items_id: item.id
+					});
+				}
+
+				for (let i = 0; i < data.all_images.length; i++) {
+					const imageUrl = data.all_images[i];
+
+					const existingImage = await _model2.default.Image.findOne({ where: { items_id: item.id, url: imageUrl } });
+					if (existingImage == null) {
+						await _model2.default.Image.create({
+							items_id: item.id,
+							url: imageUrl
+						});
+					}
+				}
+
+				for (let i = 0; i < data.all_reviews.length; i++) {
+					const review = data.all_reviews[i];
+
+					const existingReview = await _model2.default.Comment.findOne({ where: { items_id: item.id, author: review.author, text: review.text } });
+					if (existingReview == null) {
+						await _model2.default.Comment.create({
+							items_id: item.id,
+							title: item.title,
+							author: review.author,
+							text: review.text,
+							rating: review.rating || 0,
+							avatar: review.avatar,
+							date: review.date
+						});
+					}
+				}
+			}
+
 			no++;
 			successCount++;
 		} catch (ex) {
+			console.error(ex);
 			failedCount++;
 			continue;
 		}
@@ -561,33 +567,20 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		await _delay2.default.range(100, 1000);
 	}
 
-	(0, _jquery2.default)('#searchBtn').removeAttr('disabled');
-	(0, _jquery2.default)('#stopBtn').attr('disabled', 'disabled');
-	(0, _jquery2.default)('#restartBtn').attr('disabled', 'disabled');
-
-	(0, _jquery2.default)('input#searchBusiness').removeAttr('disabled');
-	(0, _jquery2.default)('input#searchLimit').removeAttr('disabled');
-
 	await _puppeteerWrapper.cleanup();
 
-	const doneMessage = `Proses scraping dengan kata kunci "${searchQuery}" telah selesai dengan statistik berikut: ${successCount} berhasil, ${failedCount} gagal`;
+	const doneMessage = `Done scraping processes with keywords "${searchQuery}". Here is the statistic data: ${successCount} success, ${failedCount} failed\n`;
 
-	(0, _jquery2.default)('span#statusTxt').removeClass('text-danger').addClass('text-success').text(doneMessage);
-
-	_ipcRenderer.send('scraping-done', doneMessage);
+	console.log(doneMessage);
 }
-
-_ipcRenderer.on('chrome-path-is-set', (event, arg) => {
-	(0, _jquery2.default)('span#chromeInfo').addClass('text-success').text(arg);
-});
 
 (async () => {
 	try {
 		const chromeSet = await _puppeteerWrapper.setup();
 		if (!chromeSet) {
-			_ipcRenderer.send('chrome-not-found');
+			console.error("Chrome not found!");
 		} else {
-			(0, _jquery2.default)('span#chromeInfo').addClass('text-success').text(_puppeteerWrapper._getSavedPath());
+			console.log(_puppeteerWrapper._getSavedPath());
 		}
 
 		await main();
@@ -598,7 +591,7 @@ _ipcRenderer.on('chrome-path-is-set', (event, arg) => {
 		await _puppeteerWrapper.cleanup();
 	}
 
-	_logger.logInfo('Done. Close window to exit');
+	console.log('Done. Close application process.');
 
 	await _logger.exportLogs(_filePaths.logsPath());
 })();

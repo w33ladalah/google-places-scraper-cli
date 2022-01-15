@@ -45,7 +45,7 @@ const Category = exports.Category = _db2.default.define('Category', {
 	}
 }, {
 	timestamps: false,
-	tableName: 'cities'
+	tableName: 'categories'
 });
 
 const Item = exports.Item = _db2.default.define('Item', {
@@ -111,6 +111,10 @@ const Item = exports.Item = _db2.default.define('Item', {
 		allowNull: true
 	},
 	item_city: {
+		type: DataTypes.TEXT,
+		allowNull: true
+	},
+	link: {
 		type: DataTypes.TEXT,
 		allowNull: true
 	}
@@ -228,4 +232,14 @@ const City = exports.City = _db2.default.define('City', {
 	timestamps: false,
 	tableName: 'cities'
 });
+
+exports.default = {
+	CategoryName,
+	Category,
+	Item,
+	Comment,
+	Image,
+	CityName,
+	City
+};
 //# sourceMappingURL=model.js.map

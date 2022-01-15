@@ -12,25 +12,9 @@ var _jquery = require('jquery');
 
 var _jquery2 = _interopRequireDefault(_jquery);
 
-var _simpleJsonDb = require('simple-json-db');
-
-var _simpleJsonDb2 = _interopRequireDefault(_simpleJsonDb);
-
-var _axios = require('axios');
-
-var _axios2 = _interopRequireDefault(_axios);
-
 var _delay = require('delay');
 
 var _delay2 = _interopRequireDefault(_delay);
-
-var _os = require('os');
-
-var _os2 = _interopRequireDefault(_os);
-
-var _md = require('md5');
-
-var _md2 = _interopRequireDefault(_md);
 
 var _date = require('date.js');
 
@@ -51,14 +35,19 @@ const _logger = new _logger2.Logger();
 const _filePaths = new _filePaths2.FilePaths(_logger, "gmap-scrapper");
 const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new _puppeteerWrapper2.PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
-let scrapedData = [];
 //#endregion
+
+let scrapedData = [];
 
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const searchQuery = process.argv.slice(2);
-	const searchLimit = process.argv.slice(3) || 5;
+	// console.log(moment(datejs('a year ago')).format('YYYY-MM-DD HH:MM:SS'));
+
+	// return;
+
+	const searchQuery = process.argv[2];
+	const searchLimit = parseInt(process.argv[3] || 5);
 
 	await GMapScrapper(searchQuery, searchLimit);
 }
@@ -182,6 +171,34 @@ const getImages = async page => {
 	return images;
 };
 
+const convertHumanizedDateToEnglish = dateString => {
+	const replaceString = {
+		"setahun": "a year",
+		"sebulan": "a month",
+		"seminggu": "a week",
+		"sehari": "a day",
+		"sejam": "an hour",
+		"semenit": "a minute",
+		"tahun": "years",
+		"bulan": "months",
+		"minggu": "weeks",
+		"hari": "days",
+		"jam": "hours",
+		"menit": "minutes",
+		"lalu": "ago"
+	};
+	let dateInEnglish = dateString;
+
+	for (const key in replaceString) {
+		if (Object.hasOwnProperty.call(replaceString, key)) {
+			const replacement = replaceString[key];
+			dateInEnglish = dateInEnglish.replace(key, replacement);
+		}
+	}
+
+	return dateInEnglish;
+};
+
 const getReviews = async page => {
 	try {
 		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
@@ -212,16 +229,38 @@ const getReviews = async page => {
 		}
 
 		const reviews = await page.$$eval('div.ODSEW-ShBeI-content', divs => Array.from(divs).map(div => {
+			const replaceString = {
+				"setahun": "a year",
+				"sebulan": "a month",
+				"seminggu": "a week",
+				"sehari": "a day",
+				"sejam": "an hour",
+				"semenit": "a minute",
+				"tahun": "years",
+				"bulan": "months",
+				"minggu": "weeks",
+				"hari": "days",
+				"jam": "hours",
+				"menit": "minutes",
+				"lalu": "ago"
+			};
+			let dateInEnglish = div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim();
+
+			for (const key in replaceString) {
+				if (Object.hasOwnProperty.call(replaceString, key)) {
+					const replacement = replaceString[key];
+					dateInEnglish = dateInEnglish.replace(key, replacement);
+				}
+			}
+
 			return {
 				author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 				avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
 				rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars').replace('bintang').trim(),
-				date: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim(),
-				text: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim()
+				text: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim(),
+				date: dateInEnglish
 			};
 		}));
-
-		console.log((0, _moment2.default)((0, _date2.default)('a year ago')).format('YYYY-mm-dd HH:MM:SS'));
 
 		await page.waitForTimeout(2000);
 		await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
@@ -229,7 +268,7 @@ const getReviews = async page => {
 
 		return reviews;
 	} catch (ex) {
-		console.error("No reviews found.");
+		console.error(ex);
 		return [];
 	}
 };
@@ -291,7 +330,7 @@ async function getLatLong(url) {
 	return latLongData.split(":");
 }
 
-async function GMapScrapper(searchQuery = "", maxLinks = 100) {
+async function GMapScrapper(searchQuery, maxLinks = 100) {
 	console.log(`Start scrapping data with query "${searchQuery}"`);
 
 	// Make sure this variable empty
@@ -339,6 +378,10 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		} catch (ex) {
 			break;
 		}
+
+		linkCount = allLinks.length;
+
+		console.log(`Links count: ${linkCount}`);
 	}
 
 	console.log("Validating results...");
@@ -368,7 +411,7 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		try {
 			const data = await getPageData(link, page);
 
-			if (no === 1) (0, _jquery2.default)('#resultsTable tbody').empty();
+			// if (no === 1) $('#resultsTable tbody').empty();
 
 			console.log("Scraped data: ", data);
 
@@ -377,6 +420,7 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 			no++;
 			successCount++;
 		} catch (ex) {
+			console.error(ex);
 			failedCount++;
 			continue;
 		}
@@ -386,7 +430,7 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 
 	await _puppeteerWrapper.cleanup();
 
-	const doneMessage = `Proses scraping dengan kata kunci "${searchQuery}" telah selesai dengan statistik berikut: ${successCount} berhasil, ${failedCount} gagal`;
+	const doneMessage = `Done scraping processes with keywords "${searchQuery}". Here is the statistic data: ${successCount} success, ${failedCount} failed`;
 
 	console.log(doneMessage);
 }
