@@ -1,6 +1,7 @@
 /node_modules
 /saved_recordings
 /.vs
+/babel-output
 settings.json
 yarn-error.log
 gscraper.code-workspace
