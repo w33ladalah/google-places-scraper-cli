@@ -1,184 +1,60 @@
 //#region Imports
 // Library ----------------------------------------------------------------------------------
-import electron from 'electron';
 import { Logger } from './lib/logger';
 import { FilePaths } from './lib/file-paths.js';
 import { PuppeteerWrapper } from './lib/puppeteer-wrapper';
 import { CSS_SELECTOR as cssSelector } from './config';
-import $ from 'jquery';
-import JSONdb from 'simple-json-db';
-import axios from 'axios';
+import Model from './lib/model';
 import delay from 'delay';
-import os from 'os';
-import md5 from 'md5';
 import datejs from 'date.js';
 import moment from 'moment';
+import { changeLanguage, changeLocation } from './lib/helpers';
 //#endregion
 
 //#region Setup - Dependency Injection-----------------------------------------------
-const _setting = new JSONdb('./settings.json');
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _ipcRenderer = electron.ipcRenderer;
-const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
-let scrapedData = [];
 //#endregion
+
+const countryCode = 'FI';
 
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	await setPlatformText();
+	const searchLimit = parseInt(process.argv[2] || 0);
+	const cities = await Model.CityName.findAll();
+	const categories = await Model.CategoryName.findAll();
+	const keywords = [];
 
-	$('#licenseToText').text(_setting.get('user_email'));
-
-	$('#searchBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		console.log('Mulai');
-
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		const searchQuery = $('input#searchBusiness').val();
-		const searchLimit = parseInt($('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		$('input#searchBusiness').attr('disabled', 'disabled');
-		$('input#searchLimit').attr('disabled', 'disabled');
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	$('#stopBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		await _puppeteerWrapper.cleanup();
-
-		$('#searchBtn').removeAttr('disabled');
-		$(e.target).attr('disabled', 'disabled');
-		$('#restartBtn').attr('disabled', 'disabled');
-
-		$('input#searchBusiness').removeAttr('disabled');
-		$('input#searchLimit').removeAttr('disabled');
-	});
-
-	$('#restartBtn').on('click', async (e) => {
-		e.preventDefault();
-
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		await _puppeteerWrapper.cleanup();
-
-		const searchQuery = $('input#searchBusiness').val();
-		const searchLimit = parseInt($('select#searchLimit').val());
-
-		if (searchQuery == "") {
-			_ipcRenderer.send('empty-search-query', 'Kata kunci pencarian kosong.');
-			return;
-		}
-
-		await GMapScrapper(searchQuery, searchLimit);
-	});
-
-	$('#exportBtn').on('click', async (e) => {
-		_ipcRenderer.send('export-to-xlsx', scrapedData);
-	});
-
-	$('#clearBtn').on('click', async (e) => {
-		$('table tbody').html('<tr><td class="text-center" colspan="9">Hasil pencarian kosong</td></tr>');
-		$('#statusTxt').removeClass('text-danger').removeClass('text-warning').addClass('text-success').text('Ready');
-		$('#resultCountText').text('0');
-
-		await loadWebViewPage("https://www.google.com/maps/");
-	});
-
-	$('#licenseForm').on('submit', async (e) => {
-		e.preventDefault();
-
-		const email = $('#emailAddress').val();
-		const key = $('#licenseKey').val();
-
-		validateLicense(email, key);
-	});
-}
-
-async function setPlatformText() {
-	$('#systemInfo').text(os.type() + " " + " " + os.platform() + " " + " " + os.arch() + " " + os.release() + " / Mac Address " + await getMacAddress());
-}
-
-async function getMacAddress() {
-	const interfaces = os.networkInterfaces();
-	let macAddress = '00:00:00:00:00';
-
-	console.log(interfaces);
-
-	for (const key in interfaces) {
-		if (interfaces.hasOwnProperty('Wi-Fi') ||
-			interfaces.hasOwnProperty('en1') ||
-			interfaces.hasOwnProperty('wlan0')) {
-			const wirelessNetwork = interfaces['Wi-Fi'] || interfaces['en1'] || interfaces['wlan0'];
-			wirelessNetwork.forEach(ifcs => {
-				if (ifcs.hasOwnProperty('mac'))
-					macAddress = ifcs['mac'];
+	cities.forEach(async (city) => {
+		categories.forEach(async (category) => {
+			const searchQuery = `${category.name} in ${city.name}, Finland`;
+			keywords.push({
+				query: searchQuery,
+				city: city.id,
+				category: category.id,
 			});
-		}
-	}
+		});
+	});
 
-	return macAddress.toUpperCase();
-}
+	for (let i = 0; i < keywords.length; i++) {
+		const keyword = keywords[i];
 
-async function validateLicense(email, licenseKey) {
-	let signature = _setting.get('signature');
-
-	if (signature == undefined || signature == '') {
-		console.log('Generate a new signature hash.');
-
-		const signatureParams = os.hostname() + "-" + getMacAddress();
-		const signatureHash = md5(signatureParams);
-
-		_setting.set('signature', signatureHash);
-
-		signature = signatureHash;
-	}
-
-	const baseUrl = _setting.get("license_server_url") || 'https://license.pirantisofthouse.com';
-	const licenseServerUrl = `${baseUrl}/license-key/get?email=${email}&key=${licenseKey}&signature_hash=${signature}`;
-
-	try {
-		const response = await axios.get(licenseServerUrl);
-		const licenseData = response.data;
-		const status = licenseData.status;
-
-		_setting.set('user_email', email);
-		_setting.set('user_license', licenseKey);
-
-		if (status === 1)
-			_ipcRenderer.send('license-updated', "success");
-		else
-			_ipcRenderer.send('license-updated', "failed");
-	} catch (ex) {
-		console.log(ex);
+		await GMapScrapper(keyword.query, searchLimit, keyword.city, keyword.category);
+		await delay.range(1000, 6000);
 	}
 }
 
-async function getPageData(url, page) {
+const getPageData = async (url, page) => {
 	console.log(`Processing ${url}...`);
 
 	await page.goto(url);
 
-	//await loadWebViewPage(url);
-
 	//Shop Name
 	await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
-	const shopName = await page.$eval(
+	const itemName = await page.$eval(
 		cssSelector['shop_name'],
 		(name) => name.textContent
 	);
@@ -248,10 +124,10 @@ async function getPageData(url, page) {
 
 	console.log(phone || 'No phone');
 
-	const latLong = await getLatLong(url);
+	const latLong = getLatLong(url);
 
 	//Hours of works
-	const workHours = await getWorkHours(page);
+	const workHours = JSON.stringify(await getWorkHours(page));
 
 	//Images
 	const images = await getImages(page);
@@ -263,167 +139,27 @@ async function getPageData(url, page) {
 
 	try {
 		returnObj = {
-			shop: shopName.trim(),
+			name: itemName.trim(),
 			rating: reviewRating === undefined ? '' : reviewRating.trim(),
 			reviews: reviewCount,
 			address: address === undefined ? '' : address.trim(),
 			website: website === undefined ? '' : website.trim(),
 			phone: phone === undefined ? '' : phone.trim().replace(/\-/g, ''),
-			latitude: latLong[0],
-			longitude: latLong[1],
-			main_image: images[0],
+			latitude: (latLong[0] || "").toString().substring(0, 15),
+			longitude: (latLong[1] || "").toString().substring(0, 15),
+			main_image: images[0] || '',
 			all_images: images,
 			all_reviews: allReviews,
 			workHours: workHours,
 		};
-
-		console.log(returnObj);
 	} catch (exception) {
 		console.log(exception);
 	}
 
 	return returnObj;
-	//await browser.close();
 }
 
-const getImages = async (page) => {
-	await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.click('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.waitForNavigation({ waitUntil: "networkidle0" });
 
-	let newScrollHeight = 0;
-	let scrollHeight = _puppeteerConfig['height'] - 200;
-	// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
-	let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
-
-	while (true) {
-		await page.waitForSelector(divSelector);
-
-		await page.evaluate(
-			(scrollHeight, divSelector) =>
-				document.querySelector(divSelector).scrollTo(0, scrollHeight),
-			scrollHeight,
-			divSelector
-		);
-
-		await page.waitForTimeout(800);
-
-		newScrollHeight = await page.$eval(
-			divSelector,
-			(div) => div.scrollHeight
-		);
-
-		if (scrollHeight === newScrollHeight) {
-			break;
-		} else {
-			scrollHeight = newScrollHeight;
-		}
-	}
-
-	const images = await page.$$eval(
-		'a[data-photo-index] div.loaded',
-		(divs) => {
-			return Array.from(divs)
-				.map((div) => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replace('"', ''));
-		}
-	);
-
-	console.log("Images: ", images);
-
-	await page.waitForTimeout(2000);
-	await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
-	await page.waitForNavigation({ waitUntil: "networkidle0" });
-
-	return images;
-}
-
-const getReviews = async (page) => {
-	try {
-		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
-
-		await page.waitForSelector(btnTriggerSelector, {timeout: 5000});
-		await page.click(btnTriggerSelector);
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
-
-		let newScrollHeight = 0;
-		let scrollHeight = _puppeteerConfig['height'] - 200;
-		// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
-		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
-
-		while (true) {
-			await page.waitForSelector(divSelector, { timeout: 4000 });
-
-			await page.evaluate(
-				(scrollHeight, divSelector) =>
-					document.querySelector(divSelector).scrollTo(0, scrollHeight),
-				scrollHeight,
-				divSelector
-			);
-
-			await page.waitForTimeout(1000);
-
-			newScrollHeight = await page.$eval(
-				divSelector,
-				(div) => div.scrollHeight
-			);
-
-			if (scrollHeight === newScrollHeight) {
-				break;
-			} else {
-				scrollHeight = newScrollHeight;
-			}
-		}
-
-		const reviews = await page.$$eval(
-			'div.ODSEW-ShBeI-content',
-			(divs) => Array.from(divs)
-				.map((div) => {
-					return {
-						author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
-						avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
-						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars').replace('bintang').trim(),
-						date: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim(),
-						text: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim(),
-					};
-				})
-		);
-
-		console.log(moment(datejs('a year ago')).format('YYYY-mm-dd HH:MM:SS'));
-
-		await page.waitForTimeout(2000);
-		await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
-
-		return reviews;
-	} catch (ex) {
-		console.error("No reviews found.");
-		return [];
-	}
-}
-
-const getWorkHours = async (page) => {
-	try {
-		const tableSelector = 'table.y0skZc-jyrRxf-Tydcue.NVpwyf-qJTHM-ibL1re';
-
-		await page.waitForSelector(tableSelector, {timeout: 5000});
-
-		const workHours = await page.$$eval(
-			`${tableSelector} tr`,
-			(divs) => Array.from(divs)
-				.map((div) => {
-					return {
-						[div.querySelector('td:nth-child(1)').innerText.trim()]: div.querySelector('td:nth-child(2) ul').innerText.trim(),
-					};
-				})
-		);
-
-		return workHours;
-	} catch (ex) {
-		console.error("No work hours found.");
-
-		return [];
-	}
-}
 
 //Get Links
 const getLinks = async (page) => {
@@ -470,49 +206,61 @@ const getLinks = async (page) => {
 	return searchResults;
 }
 
-async function getLatLong(url) {
-	const latLongStartIndex = url.indexOf('!3d-') + 4;
-	const latLongEndIndex = url.indexOf('?');
-	const latLongData = url.substring(latLongStartIndex, latLongEndIndex).replace('!4d', ':');
+const getLatLong = (url) => {
+	let latLongStartIndex = url.indexOf('!3d') + 4;
+	let latLongEndIndex = url.indexOf('?');
+	let latLongData = url.substring(latLongStartIndex, latLongEndIndex).split('!4d');
 
-	return latLongData.split(":");
+	if (isNaN(latLongData[0]) || isNaN(latLongData[1])) {
+		latLongStartIndex = url.indexOf('/@') + 2;
+		latLongEndIndex = url.indexOf(',15z');
+		latLongData = url.substring(latLongStartIndex, latLongEndIndex).split(",");
+	}
+
+	return latLongData;
 }
 
-async function loadWebViewPage(url) {
-	const webview = document.getElementById('gmapWv');
-	await webview.loadURL(url);
+const slugify = (str) => {
+	str = str.replace(/^\s+|\s+$/g, ''); // trim
+	str = str.toLowerCase();
 
-	webview.removeEventListener('dom-ready', loadWebViewPage);
-	webview.addEventListener('dom-ready', loadWebViewPage);
+	// remove accents, swap ñ for n, etc
+	var from = "àáäâèéëêìíïîòóöôùúüûñç·/_,:;";
+	var to = "aaaaeeeeiiiioooouuuunc------";
+	for (var i = 0, l = from.length; i < l; i++) {
+		str = str.replace(new RegExp(from.charAt(i), 'g'), to.charAt(i));
+	}
+
+	str = str.replace(/[^a-z0-9 -]/g, '') // remove invalid chars
+		.replace(/\s+/g, '-') // collapse whitespace and replace by -
+		.replace(/-+/g, '-'); // collapse dashes
+
+	return str;
 }
 
-async function GMapScrapper(searchQuery = "", maxLinks = 100) {
-	console.log('Start scrapping data.');
-
-	// Make sure this variable empty
-	scrapedData = [];
-
-	$('#searchBtn').attr('disabled', 'disabled');
-	$('#stopBtn').removeAttr('disabled');
-	$('#restartBtn').removeAttr('disabled');
-	$('span#statusTxt').removeClass('text-success').addClass('text-danger').html('<img src="res/images/loader.gif" width="20" height="20"> Mulai scraping listing...');
+async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
+	console.log(`Start scrapping data with query "${searchQuery}"`);
 
 	const page = await _puppeteerWrapper.newPage();
 
-	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now(); // + searchQuery.replace(/\s/g, '+');
-
-	await loadWebViewPage(gmapInitUrl + "?q=" + searchQuery.replace(/\s/g, '+'));
+	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now();
 
 	page.on('response', response => {
 		const status = response.status();
-		console.log(status)
 		if ((status >= 300) && (status <= 399)) {
 			console.log('Redirect from', response.url(), 'to', response.headers()['location'])
 		}
-	})
+	});
+
+	page.on('dialog', async dialog => {
+		await delay(1000);
+		await dialog.accept();
+	});
 
 	try {
 		await page.goto(gmapInitUrl, { waitUntil: 'networkidle0' });
+		await changeLocation(countryCode, page);
+		await changeLanguage(page);
 	} catch (ex) {
 		console.log(ex);
 		await page.waitForTimeout(800);
@@ -547,6 +295,7 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 				.click()
 		});
 
+
 		try {
 			await page.waitForNavigation({ waitUntil: "load", timeout: 3000 });
 		} catch (ex) {
@@ -555,16 +304,10 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 
 		linkCount = allLinks.length;
 
-		$('span#statusTxt').removeClass('text-danger').addClass('text-warning').html('<img src="res/images/loader.gif" width="20" height="20"> Mengumpulkan listing...');
-
-		if (maxLinks == 0) {
-			$('#resultCountText').text(linkCount);
-		} else {
-			$('#resultCountText').text(linkCount > maxLinks ? maxLinks : linkCount);
-		}
+		console.log(`Links count: ${linkCount}`);
 	}
 
-	$('#resultsTable tbody').html('<tr><td class="text-center" colspan="9"><p class="m-0 p-0"><img src="res/images/loader.gif" width="20" height="20"> Sedang melakukan validasi listing yang didapat...</p></td></tr>');
+	console.log("Validating results...");
 
 	console.log("All Links ", allLinks.length);
 
@@ -576,13 +319,9 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	$('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> Validasi listing...');
-
 	await delay(2000);
 
 	console.log("Filtered Links ", uniqueLinks.length);
-
-	$('#resultCountText').text(uniqueLinks.length);
 
 	let no = 1;
 	let successCount = 0;
@@ -590,29 +329,77 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 	for (let link of uniqueLinks) {
 		if (maxLinks !== 0 && no > maxLinks) break;
 
-		$('span#statusTxt').removeClass('text-warning').addClass('text-success').html('<img src="res/images/loader.gif" width="20" height="20"> #' + no + ' Memproses "' + link + '"');
+		console.log('#' + no + ' Processing: "' + link + '...');
 
 		try {
-			const data = await getPageData(link, page);
-			if (no === 1) $('#resultsTable tbody').empty();
+			const item = await Model.Item.findOne({ where: { link: link } });
+			if (item == null) {
+				const data = await getPageData(link, page);
+				const item = await Model.Item.create({
+					name: data.name,
+					slug: slugify(data.name),
+					address: data.address,
+					latitude: data.latitude,
+					longitude: data.longitude,
+					address: data.address,
+					hours_of_work: data.workHours,
+					website: data.website,
+					image_remote: data.main_image,
+					image: data.main_image,
+					date_created: moment().format('YYYY-MM-DD HH:mm:ss').toString(),
+					item_city: city,
+					link: link,
+				});
 
-			$('#resultsTable tbody').append(`
-				<tr>
-					<th scope="row">${no}</th>
-					<td>${data.shop}</td>
-					<td>${data.address}</td>
-					<td>${data.phone}</td>
-					<td>${data.website}</td>
-					<td>${data.rating}</td>
-					<td>${data.reviews}</td>
-					<td>${data.latitude}</td>
-					<td>${data.longitude}</td>
-				</tr>
-			`);
-			scrapedData.push(data);
+				console.log("Item created: ", item);
+
+				await Model.City.create({
+					cities_names_id: city,
+					items_id: item.id,
+				});
+
+				const existingItemCategory = await Model.Category.findOne({ where: { items_id: item.id } });
+				if (existingItemCategory == null) {
+					await Model.Category.create({
+						categories_names_id: category,
+						items_id: item.id,
+					});
+				}
+
+				for (let i = 0; i < data.all_images.length; i++) {
+					const imageUrl = data.all_images[i];
+
+					const existingImage = await Model.Image.findOne({ where: { items_id: item.id, url: imageUrl } });
+					if (existingImage == null) {
+						await Model.Image.create({
+							items_id: item.id,
+							url: imageUrl,
+						});
+					}
+				}
+
+				for (let i = 0; i < data.all_reviews.length; i++) {
+					const review = data.all_reviews[i];
+
+					const existingReview = await Model.Comment.findOne({ where: { items_id: item.id, author: review.author, text: review.text } });
+					if (existingReview == null) {
+						await Model.Comment.create({
+							items_id: item.id,
+							title: item.title,
+							author: review.author,
+							text: review.text,
+							rating: review.rating || 0,
+							avatar: review.avatar,
+							date: review.date,
+						});
+					}
+				}
+			}
+
 			no++;
 			successCount++;
 		} catch (ex) {
+			console.error(ex);
 			failedCount++;
 			continue;
 		}
@@ -620,33 +407,20 @@ async function GMapScrapper(searchQuery = "", maxLinks = 100) {
 		await delay.range(100, 1000);
 	}
 
-	$('#searchBtn').removeAttr('disabled');
-	$('#stopBtn').attr('disabled', 'disabled');
-	$('#restartBtn').attr('disabled', 'disabled');
-
-	$('input#searchBusiness').removeAttr('disabled');
-	$('input#searchLimit').removeAttr('disabled');
-
 	await _puppeteerWrapper.cleanup();
 
-	const doneMessage = `Proses scraping dengan kata kunci "${searchQuery}" telah selesai dengan statistik berikut: ${successCount} berhasil, ${failedCount} gagal`;
+	const doneMessage = `Done scraping processes with keywords "${searchQuery}". Here is the statistic data: ${successCount} success, ${failedCount} failed\n`;
 
-	$('span#statusTxt').removeClass('text-danger').addClass('text-success').text(doneMessage);
-
-	_ipcRenderer.send('scraping-done', doneMessage);
+	console.log(doneMessage);
 }
-
-_ipcRenderer.on('chrome-path-is-set', (event, arg) => {
-	$('span#chromeInfo').addClass('text-success').text(arg);
-});
 
 (async () => {
 	try {
 		const chromeSet = await _puppeteerWrapper.setup();
 		if (!chromeSet) {
-			_ipcRenderer.send('chrome-not-found');
+			console.error("Chrome not found!");
 		} else {
-			$('span#chromeInfo').addClass('text-success').text(_puppeteerWrapper._getSavedPath());
+			console.log(_puppeteerWrapper._getSavedPath());
 		}
 
 		await main();
@@ -657,7 +431,7 @@ _ipcRenderer.on('chrome-path-is-set', (event, arg) => {
 		await _puppeteerWrapper.cleanup();
 	}
 
-	_logger.logInfo('Done. Close window to exit');
+	console.log('Done. Close application process.');
 
 	await _logger.exportLogs(_filePaths.logsPath());
 })();

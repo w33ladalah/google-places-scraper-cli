@@ -34,7 +34,7 @@ export const Category = sequelize.define('Category', {
 	},
 }, {
 	timestamps: false,
-	tableName: 'cities'
+	tableName: 'categories'
 });
 
 export const Item = sequelize.define('Item', {
@@ -100,6 +100,10 @@ export const Item = sequelize.define('Item', {
 		allowNull: true,
 	},
 	item_city: {
+		type: DataTypes.TEXT,
+		allowNull: true,
+	},
+	link: {
 		type: DataTypes.TEXT,
 		allowNull: true,
 	},
@@ -217,3 +221,13 @@ export const City = sequelize.define('City', {
 	timestamps: false,
 	tableName: 'cities'
 });
+
+export default {
+	CategoryName,
+	Category,
+	Item,
+	Comment,
+	Image,
+	CityName,
+	City,
+};
