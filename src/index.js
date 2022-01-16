@@ -1,5 +1,3 @@
-//#region Imports
-// Library ----------------------------------------------------------------------------------
 import { Logger } from './lib/logger';
 import { FilePaths } from './lib/file-paths.js';
 import { PuppeteerWrapper } from './lib/puppeteer-wrapper';
@@ -14,7 +12,7 @@ import moment from 'moment';
 //#region Setup - Dependency Injection-----------------------------------------------
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 //#endregion
 
@@ -88,181 +86,181 @@ const changeLanguage = async (page) => {
 	await page.click('div.jfk-button:nth-child(1)');
 }
 
-const getPageData = async (url, page) => {
-	console.log(`Processing ${url}...`);
-
+async function getPageData(url, page) {
 	await page.goto(url);
+	await page.waitForNavigation({ timeout: 5000, waitUntil: ['networkidle0'] });
 
-	//Shop Name
-	await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
-	const itemName = await page.$eval(
-		cssSelector['shop_name'],
-		(name) => name.textContent
-	);
-
-	await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
-	const reviewRating = await page.$eval(
-		cssSelector['rating'],
-		(rating) => rating.textContent
-	);
-
+	//Reviews
 	let reviewCount = 0;
 	try {
 		await page.waitForSelector(".h0ySl-wcwwM-E70qVe-list");
 		reviewCount = parseInt(await page.$eval(
 			cssSelector['reviews'],
-			(review) => review.textContent
+			(review) => review.textContent.replaceAll('reviews', '').trim()
 		));
+		console.error(`Found ${reviewCount} reviews.`);
 	} catch (exception) {
-		console.error("No reviews found.");
+		console.error("No reviews found. Skip.");
 	}
 
-	//Shop Address
-	await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
-	let address = await page.$$eval(
-		cssSelector['address'],
-		(divs) =>
-			Array.from(divs)
-				.map((div) => div.innerText)
-				.find((address) => address)
-	);
+	if (reviewCount > 0) {
+		let returnObj = {};
 
-	if (address === undefined) {
-		address = await page.$$eval(
-			cssSelector['address_backup'],
-			(divs) => divs[1]
-		);
+		try {
+			const allReviews = await getReviews(page);
+
+			if (allReviews.length == 0) {
+				return {};
+			}
+
+			console.log("Reviews after validation: ", allReviews);
+
+			//Shop Name
+			await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
+			const shopName = await page.$eval(
+				cssSelector['shop_name'],
+				(name) => name.textContent
+			);
+
+			await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
+			const reviewRating = await page.$eval(
+				cssSelector['rating'],
+				(rating) => rating.textContent
+			);
+
+			//Shop Address
+			await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
+			let address = await page.$$eval(
+				cssSelector['address'],
+				(divs) =>
+					Array.from(divs)
+						.map((div) => div.innerText)
+						.find((address) => address)
+			);
+
+			if (address === undefined) {
+				address = await page.$$eval(
+					cssSelector['address_backup'],
+					(divs) => divs[1]
+				);
+			}
+
+			//Website
+			await page.waitForSelector(cssSelector['website'], { timeout: 3 });
+
+			const website = await page.$$eval(
+				cssSelector['website'],
+				(divs) =>
+					Array.from(divs)
+						.map((div) => div.innerText)
+						.find((link) =>
+							/^((https?|ftp|smtp):\/\/)?(www.)?[a-z0-9]+(\.[a-z]{2,}){1,3}(#?\/?[a-zA-Z0-9#]+)*\/?(\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$/.test(
+								link
+							)
+						)
+			);
+
+			console.log(website || 'No website');
+
+			const phone = await page.$$eval(
+				cssSelector['phone'],
+				(divs) =>
+					Array.from(divs)
+						.map((div) => div.innerText)
+						.find((phone) => phone)
+			);
+
+			console.log(phone || 'No phone');
+
+			const latLong = await getLatLong(url);
+
+			//Hours of works
+			const workHours = await getWorkHours(page);
+
+			//Images
+			const images = await getImages(page);
+
+			returnObj = {
+				placeName: shopName.trim(),
+				rating: reviewRating === undefined ? '' : reviewRating.trim(),
+				reviews: reviewCount,
+				address: address === undefined ? '' : address.trim(),
+				website: website === undefined ? '' : website.trim(),
+				phone: phone === undefined ? '' : phone.trim().replace(/\-/g, ''),
+				latitude: latLong[0],
+				longitude: latLong[1],
+				main_image: images[0],
+				all_images: images,
+				all_reviews: allReviews,
+				workHours: JSON.stringify(workHours),
+			};
+		} catch (exception) {
+			console.error(exception);
+		}
+
+		return returnObj;
+	} else {
+		return {};
 	}
-
-	//Website
-	try {
-		await page.waitForSelector(cssSelector['website'], { timeout: 3 });
-	} catch (ex) {
-		console.log('No element found.');
-	}
-
-	const website = await page.$$eval(
-		cssSelector['website'],
-		(divs) =>
-			Array.from(divs)
-				.map((div) => div.innerText)
-				.find((link) =>
-					/^((https?|ftp|smtp):\/\/)?(www.)?[a-z0-9]+(\.[a-z]{2,}){1,3}(#?\/?[a-zA-Z0-9#]+)*\/?(\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$/.test(
-						link
-					)
-				)
-	);
-
-	console.log(website || 'No website');
-
-	const phone = await page.$$eval(
-		cssSelector['phone'],
-		(divs) =>
-			Array.from(divs)
-				.map((div) => div.innerText)
-				.find((phone) => phone)
-	);
-
-	console.log(phone || 'No phone');
-
-	const latLong = getLatLong(url);
-
-	//Hours of works
-	const workHours = JSON.stringify(await getWorkHours(page));
-
-	//Images
-	const images = await getImages(page);
-
-	//Reviews
-	const allReviews = await getReviews(page);
-
-	let returnObj = {};
-
-	try {
-		returnObj = {
-			name: itemName.trim(),
-			rating: reviewRating === undefined ? '' : reviewRating.trim(),
-			reviews: reviewCount,
-			address: address === undefined ? '' : address.trim(),
-			website: website === undefined ? '' : website.trim(),
-			phone: phone === undefined ? '' : phone.trim().replace(/\-/g, ''),
-			latitude: (latLong[0] || "").toString().substring(0, 15),
-			longitude: (latLong[1] || "").toString().substring(0, 15),
-			main_image: images[0] || '',
-			all_images: images,
-			all_reviews: allReviews,
-			workHours: workHours,
-		};
-	} catch (exception) {
-		console.log(exception);
-	}
-
-	return returnObj;
 }
 
 const getImages = async (page) => {
-	try {
-		console.log("Getting images...");
+	await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]');
+	await page.click('button[jsaction="pane.heroHeaderImage.click"]');
+	await page.waitForNavigation({ waitUntil: "networkidle0" });
 
-		await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]', {timeout: 5000});
-		await page.click('button[jsaction="pane.heroHeaderImage.click"]');
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
+	let newScrollHeight = 0;
+	let scrollHeight = _puppeteerConfig['height'] - 200;
+	// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
+	let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
-		let newScrollHeight = 0;
-		let scrollHeight = _puppeteerConfig['height'] - 200;
-		// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
-		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
+	while (true) {
+		await page.waitForSelector(divSelector);
 
-		while (true) {
-			await page.waitForSelector(divSelector);
-
-			await page.evaluate(
-				(scrollHeight, divSelector) =>
-					document.querySelector(divSelector).scrollTo(0, scrollHeight),
-				scrollHeight,
-				divSelector
-			);
-
-			await page.waitForTimeout(800);
-
-			newScrollHeight = await page.$eval(
-				divSelector,
-				(div) => div.scrollHeight
-			);
-
-			if (scrollHeight === newScrollHeight) {
-				break;
-			} else {
-				scrollHeight = newScrollHeight;
-			}
-		}
-
-		const images = await page.$$eval(
-			'a[data-photo-index] div.loaded',
-			(divs) => {
-				return Array.from(divs)
-					.map((div) => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replaceAll('"', ''));
-			}
+		await page.evaluate(
+			(scrollHeight, divSelector) =>
+				document.querySelector(divSelector).scrollTo(0, scrollHeight),
+			scrollHeight,
+			divSelector
 		);
 
-		console.log("Images: ", images);
+		await page.waitForTimeout(800);
 
-		await page.waitForTimeout(2000);
-		await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
+		newScrollHeight = await page.$eval(
+			divSelector,
+			(div) => div.scrollHeight
+		);
 
-		return images;
-	} catch (ex) {
-		console.error(ex);
-		return [];
+		if (scrollHeight === newScrollHeight) {
+			break;
+		} else {
+			scrollHeight = newScrollHeight;
+		}
 	}
+
+	const images = await page.$$eval(
+		'a[data-photo-index] div.loaded',
+		(divs) => {
+			return Array.from(divs)
+				.map((div) => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replace('"', ''));
+		}
+	);
+
+	console.log("Images: ", images);
+
+	await page.waitForTimeout(2000);
+	await page.goBack({ timeout: 3000, waitUntil: "networkidle0" });
+	// await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
+	// await page.waitForNavigation({ waitUntil: "networkidle0" });
+
+	return images;
 }
 
 const getReviews = async (page) => {
 	try {
 		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
 
-		await page.waitForSelector(btnTriggerSelector, {timeout: 5000});
+		await page.waitForSelector(btnTriggerSelector, { timeout: 5000 });
 		await page.click(btnTriggerSelector);
 		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
@@ -293,12 +291,14 @@ const getReviews = async (page) => {
 			} else {
 				scrollHeight = newScrollHeight;
 			}
-		}
 
-		await page.$$eval('[jsaction="pane.review.expandReview"]', async (elHandles) => {
-			elHandles.forEach(el => el.click());
-			await delay(700);
-		});
+			const buttons = await page.$x('//button[@jsaction="pane.review.expandReview"]');
+			for (let button of buttons) {
+				await button.click();
+				await delay.range(500, 3000);
+			}
+			await delay.range(100, 3500);
+		}
 
 		const reviews = await page.$$eval(
 			'div.ODSEW-ShBeI-content',
@@ -336,28 +336,34 @@ const getReviews = async (page) => {
 						title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 						avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
 						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('bintang', '').trim(),
-						text: reviewText.substring(startTrimIndex).trim(),
+						text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
+						length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
 						date: dateInEnglish,
 					};
 				})
 		);
 
-		await page.waitForTimeout(2000);
-		await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
+		console.log("Reviews before validation: ", reviews);
 
 		const reviewData = [];
 
 		for (let i = 0; i < reviews.length; i++) {
 			const review = reviews[i];
-			review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
-			reviewData.push(review);
+			console.log(review['length'] >= 80);
+			if (reviews['length'] >= 80) {
+				review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
+				reviewData.push(review);
+			}
 		}
 
-		// console.log("Reviews data: ", reviewData);
+		await page.waitForTimeout(300);
+		await page.goBack({timeout: 3000, waitUntil: 'networkidle0'});
+		// await page.click('button[aria-label="Back"].eT1oJ');
+		// await page.waitForNavigation({ waitUntil: "networkidle0" });
 
 		return reviewData;
 	} catch (ex) {
+		console.log("No reviews found.");
 		console.error(ex);
 		return [];
 	}
@@ -367,7 +373,7 @@ const getWorkHours = async (page) => {
 	try {
 		const tableSelector = 'table.y0skZc-jyrRxf-Tydcue.NVpwyf-qJTHM-ibL1re';
 
-		await page.waitForSelector(tableSelector, {timeout: 5000});
+		await page.waitForSelector(tableSelector, { timeout: 5000 });
 
 		const workHours = await page.$$eval(
 			`${tableSelector} tr`,
@@ -469,14 +475,14 @@ async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
 
 	const page = await _puppeteerWrapper.newPage();
 
-	const gmapInitUrl = "https://www.google.com/maps?t=" + Date.now();
+	const gmapInitUrl = "https://www.google.com/maps";
 
-	page.on('response', response => {
-		const status = response.status();
-		if ((status >= 300) && (status <= 399)) {
-			console.log('Redirect from', response.url(), 'to', response.headers()['location'])
-		}
-	});
+	// page.on('response', response => {
+	// 	const status = response.status();
+	// 	if ((status >= 300) && (status <= 399)) {
+	// 		console.log('Redirect from', response.url(), 'to', response.headers()['location'])
+	// 	}
+	// });
 
 	page.on('dialog', async dialog => {
 		await delay(1000);
@@ -558,66 +564,74 @@ async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
 		console.log('#' + no + ' Processing: "' + link + '...');
 
 		try {
-			const item = await Model.Item.findOne({ where: { link: link } });
-			if (item == null) {
-				const data = await getPageData(link, page);
-				const item = await Model.Item.create({
-					name: data.name,
-					slug: slugify(data.name),
-					address: data.address,
-					latitude: data.latitude,
-					longitude: data.longitude,
-					address: data.address,
-					hours_of_work: data.workHours,
-					website: data.website,
-					image_remote: data.main_image,
-					image: data.main_image,
-					date_created: moment().format('YYYY-MM-DD HH:mm:ss').toString(),
-					item_city: city,
-					link: link,
-				});
+			const data = await getPageData(link, page);
 
-				console.log("Item created: ", item);
+			console.log("Data: ", data);
 
-				await Model.City.create({
-					cities_names_id: city,
-					items_id: item.id,
-				});
+			if (Object.hasOwnProperty.call(data, 'placeName')) {
+				const item = await Model.Item.findOne({ where: { name: data.placeName } });
+				if (item == null) {
+					console.log('Save the items');
 
-				const existingItemCategory = await Model.Category.findOne({ where: { items_id: item.id } });
-				if (existingItemCategory == null) {
-					await Model.Category.create({
-						categories_names_id: category,
+					const item = await Model.Item.create({
+						name: data.placeName,
+						slug: slugify(data.placeName),
+						address: data.address,
+						latitude: data.latitude,
+						longitude: data.longitude,
+						address: data.address,
+						hours_of_work: data.workHours == '[]' ? '' : data.workHours,
+						website: data.website,
+						image_remote: data.main_image,
+						image: data.main_image,
+						phone: data.phone,
+						date_created: moment().format('YYYY-MM-DD HH:mm:ss').toString(),
+						item_city: city,
+						link: link,
+					});
+
+					console.log("Item created: ", item);
+
+					await Model.City.create({
+						cities_names_id: city,
 						items_id: item.id,
 					});
-				}
 
-				for (let i = 0; i < data.all_images.length; i++) {
-					const imageUrl = data.all_images[i];
-
-					const existingImage = await Model.Image.findOne({ where: { items_id: item.id, url: imageUrl } });
-					if (existingImage == null) {
-						await Model.Image.create({
+					const existingItemCategory = await Model.Category.findOne({ where: { items_id: item.id } });
+					if (existingItemCategory == null) {
+						await Model.Category.create({
+							categories_names_id: category,
 							items_id: item.id,
-							url: imageUrl,
 						});
 					}
-				}
 
-				for (let i = 0; i < data.all_reviews.length; i++) {
-					const review = data.all_reviews[i];
+					for (let i = 0; i < data.all_images.length; i++) {
+						const imageUrl = data.all_images[i];
 
-					const existingReview = await Model.Comment.findOne({ where: { items_id: item.id, author: review.author, text: review.text } });
-					if (existingReview == null) {
-						await Model.Comment.create({
-							items_id: item.id,
-							title: item.title,
-							author: review.author,
-							text: review.text,
-							rating: review.rating || 0,
-							avatar: review.avatar,
-							date: review.date,
-						});
+						const existingImage = await Model.Image.findOne({ where: { items_id: item.id, url: imageUrl } });
+						if (existingImage == null) {
+							await Model.Image.create({
+								items_id: item.id,
+								url: imageUrl,
+							});
+						}
+					}
+
+					for (let i = 0; i < data.all_reviews.length; i++) {
+						const review = data.all_reviews[i];
+
+						const existingReview = await Model.Comment.findOne({ where: { items_id: item.id, author: review.author, text: review.text } });
+						if (existingReview == null) {
+							await Model.Comment.create({
+								items_id: item.id,
+								title: item.title,
+								author: review.author,
+								text: review.text,
+								rating: review.rating || 0,
+								avatar: review.avatar,
+								date: review.date,
+							});
+						}
 					}
 				}
 			}

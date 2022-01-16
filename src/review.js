@@ -20,6 +20,12 @@ const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerCo
 
 const getReviews = async (page) => {
 	try {
+		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
+
+		await page.waitForSelector(btnTriggerSelector, { timeout: 5000 });
+		await page.click(btnTriggerSelector);
+		await page.waitForNavigation({ waitUntil: "networkidle0" });
+
 		let newScrollHeight = 0;
 		let scrollHeight = _puppeteerConfig['height'] - 200;
 		// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
@@ -35,6 +41,8 @@ const getReviews = async (page) => {
 				divSelector
 			);
 
+			await page.waitForTimeout(1000);
+
 			newScrollHeight = await page.$eval(
 				divSelector,
 				(div) => div.scrollHeight
@@ -49,10 +57,9 @@ const getReviews = async (page) => {
 			const buttons = await page.$x('//button[@jsaction="pane.review.expandReview"]');
 			for (let button of buttons) {
 				await button.click();
-				await delay(700);
+				await delay.range(500, 3000);
 			}
-
-			await page.waitForTimeout(1000);
+			await delay.range(100, 3500);
 		}
 
 		const reviews = await page.$$eval(
@@ -84,35 +91,43 @@ const getReviews = async (page) => {
 					}
 
 					const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
-					const startTrimIndex = reviewText.indexOf('(Original)') + 10;
+					const startTrimIndex = reviewText.indexOf('(Translated by Google)') + 22;
+					const endTrimIndex = reviewText.indexOf('(Original)');
+					const cleanedReviewText = reviewText.substring(startTrimIndex, endTrimIndex).trim();
 
 					return {
 						author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 						title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 						avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
 						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('bintang', '').trim(),
-						text: reviewText.substring(startTrimIndex).trim(),
+						text: reviewText.indexOf('(Translated by Google)') === -1 ? reviewText.trim() : cleanedReviewText,
+						length: parseInt(reviewText.indexOf('(Translated by Google)') === -1 ? reviewText.trim().length : cleanedReviewText.length),
 						date: dateInEnglish,
 					};
 				})
 		);
 
-		await page.waitForTimeout(2000);
-		await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
+		console.log("Reviews before validation: ", reviews);
 
 		const reviewData = [];
 
 		for (let i = 0; i < reviews.length; i++) {
 			const review = reviews[i];
-			review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
-			reviewData.push(review);
+			console.log(review['length']);
+			if (reviews['length'] >= 100) {
+				review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
+				reviewData.push(review);
+			}
 		}
 
-		// console.log("Reviews data: ", reviewData);
+		await page.waitForTimeout(300);
+		await page.goBack({ timeout: 3000, waitUntil: 'networkidle0' });
+		// await page.click('button[aria-label="Back"].eT1oJ');
+		// await page.waitForNavigation({ waitUntil: "networkidle0" });
 
 		return reviewData;
 	} catch (ex) {
+		console.log("No reviews found.");
 		console.error(ex);
 		return [];
 	}
