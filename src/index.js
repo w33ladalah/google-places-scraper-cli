@@ -21,7 +21,9 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const searchLimit = parseInt(process.argv[2] || 0);
+	const startCity = 'Espoo';
+	const startCategory = 'Tourist attraction';
+	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll();
 	const categories = await Model.CategoryName.findAll();
 	const keywords = [];
@@ -37,10 +39,14 @@ async function main() {
 		});
 	});
 
-	for (let i = 0; i < keywords.length; i++) {
+	const startIndex = keywords.map(i => i.query).indexOf(startQuery);
+
+	console.log(`Begin scrapping data with starting query "${startQuery}"`);
+
+	for (let i = startIndex; i < keywords.length; i++) {
 		const keyword = keywords[i];
 
-		await GMapScrapper(keyword.query, searchLimit, keyword.city, keyword.category);
+		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
 		await delay.range(1000, 6000);
 	}
 }
@@ -108,6 +114,13 @@ async function getPageData(url, page) {
 
 		try {
 			const allReviews = await getReviews(page);
+
+			try {
+				await page.goBack({ timeout: 1000, waitUntil: 'networkidle0' });
+			} catch (ex) {
+				await page.click('button[aria-label="Back"].eT1oJ');
+				await page.waitForNavigation({ waitUntil: "networkidle0" });
+			}
 
 			if (allReviews.length == 0) {
 				return {};
@@ -292,8 +305,12 @@ const getReviews = async (page) => {
 				scrollHeight = newScrollHeight;
 			}
 
+			console.log("Scrolling reviews...");
+
 			const buttons = await page.$x('//button[@jsaction="pane.review.expandReview"]');
 			for (let button of buttons) {
+				console.log("Click more review button...");
+
 				await button.click();
 				await delay.range(500, 3000);
 			}
@@ -349,17 +366,13 @@ const getReviews = async (page) => {
 
 		for (let i = 0; i < reviews.length; i++) {
 			const review = reviews[i];
-			console.log(review['length'] >= 80);
-			if (reviews['length'] >= 80) {
+			if (review['length'] >= 80) {
 				review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
 				reviewData.push(review);
 			}
 		}
 
-		await page.waitForTimeout(300);
-		await page.goBack({timeout: 3000, waitUntil: 'networkidle0'});
-		// await page.click('button[aria-label="Back"].eT1oJ');
-		// await page.waitForNavigation({ waitUntil: "networkidle0" });
+		console.log("Reviews after validation: ", reviewData);
 
 		return reviewData;
 	} catch (ex) {
@@ -470,9 +483,7 @@ const slugify = (str) => {
 	return str;
 }
 
-async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
-	console.log(`Start scrapping data with query "${searchQuery}"`);
-
+async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	const page = await _puppeteerWrapper.newPage();
 
 	const gmapInitUrl = "https://www.google.com/maps";
@@ -580,7 +591,7 @@ async function GMapScrapper(searchQuery, maxLinks = 100, city, category) {
 						latitude: data.latitude,
 						longitude: data.longitude,
 						address: data.address,
-						hours_of_work: data.workHours == '[]' ? '' : data.workHours,
+						hours_of_work: data.workHours == '[]' || data.workHours == '[{"":""}]' ? '' : data.workHours,
 						website: data.website,
 						image_remote: data.main_image,
 						image: data.main_image,
