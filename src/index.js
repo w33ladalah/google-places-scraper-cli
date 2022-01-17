@@ -22,7 +22,7 @@ const countryCode = 'FI';
 
 async function main() {
 	const startCity = 'Espoo';
-	const startCategory = 'Tourist attraction';
+	const startCategory = 'Association or organization';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll();
 	const categories = await Model.CategoryName.findAll();
@@ -46,8 +46,8 @@ async function main() {
 	for (let i = startIndex; i < keywords.length; i++) {
 		const keyword = keywords[i];
 
-		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
-		await delay.range(1000, 6000);
+		await GMapScrapper(keyword.query, 10000, keyword.city, keyword.category);
+		await delay.range(1000, 3000);
 	}
 }
 
@@ -59,15 +59,15 @@ const changeLocation = async (countryCode, page) => {
 
 	const moreRegionLinkSelector = 'a#regionanchormore';
 	await page.waitForSelector(moreRegionLinkSelector, { waitUntil: 'networkidle2' });
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(500);
 	await page.click(moreRegionLinkSelector);
 
 	await page.waitForSelector('#regionother');
 
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(300);
 
 	await page.click(`div[data-value="${countryCode}"`);
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(600);
 	await page.click('div.jfk-button:nth-child(1)');
 }
 
@@ -77,17 +77,17 @@ const changeLanguage = async (page) => {
 	await page.waitForSelector(locationMenuSelector);
 	await page.click(locationMenuSelector);
 
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(500);
 
 	await page.waitForSelector('a[aria-controls="langSec"]');
 	await page.click('a[aria-controls="langSec"]');
 
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(500);
 
 	await page.waitForSelector('a#langanchormore');
 	await page.click(`div[data-value="en"`);
 
-	await page.waitForTimeout(1000);
+	await page.waitForTimeout(500);
 
 	await page.click('div.jfk-button:nth-child(1)');
 }
@@ -116,9 +116,14 @@ async function getPageData(url, page) {
 			const allReviews = await getReviews(page);
 
 			try {
-				await page.goBack({ timeout: 1000, waitUntil: 'networkidle0' });
+				await page.goBack({ timeout: 2000, waitUntil: 'networkidle0' });
 			} catch (ex) {
-				await page.click('button[aria-label="Back"].eT1oJ');
+				try {
+					await page.click('button[jscontroller="soHxf"]');
+				} catch (ex) {
+					await page.goto(url);
+				}
+
 				await page.waitForNavigation({ waitUntil: "networkidle0" });
 			}
 
@@ -128,62 +133,95 @@ async function getPageData(url, page) {
 
 			console.log("Reviews after validation: ", allReviews);
 
-			//Shop Name
-			await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
-			const shopName = await page.$eval(
-				cssSelector['shop_name'],
-				(name) => name.textContent
-			);
-
-			await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
-			const reviewRating = await page.$eval(
-				cssSelector['rating'],
-				(rating) => rating.textContent
-			);
-
-			//Shop Address
-			await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
-			let address = await page.$$eval(
-				cssSelector['address'],
-				(divs) =>
-					Array.from(divs)
-						.map((div) => div.innerText)
-						.find((address) => address)
-			);
-
-			if (address === undefined) {
-				address = await page.$$eval(
-					cssSelector['address_backup'],
-					(divs) => divs[1]
+			let placeName = ''
+			try {
+				//Shop Name
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
+				placeName = await page.$eval(
+					cssSelector['shop_name'],
+					(name) => name.textContent
 				);
+			} catch (ex) {
+				console.log("No place name found.");
 			}
 
-			//Website
-			await page.waitForSelector(cssSelector['website'], { timeout: 3 });
+			let category = ''
+			try {
+				await page.waitForSelector('button[jsaction="pane.rating.category"]');
+				category = await page.$eval(
+					'button[jsaction="pane.rating.category"]',
+					(category) => category.textContent
+				);
+			} catch (ex) {
+				console.log("No category name found.");
+			}
 
-			const website = await page.$$eval(
-				cssSelector['website'],
-				(divs) =>
-					Array.from(divs)
-						.map((div) => div.innerText)
-						.find((link) =>
-							/^((https?|ftp|smtp):\/\/)?(www.)?[a-z0-9]+(\.[a-z]{2,}){1,3}(#?\/?[a-zA-Z0-9#]+)*\/?(\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$/.test(
-								link
+			let reviewRating = '';
+			try {
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
+				reviewRating = await page.$eval(
+					cssSelector['rating'],
+					(rating) => rating.textContent
+				);
+			} catch (ex) {
+				console.log("No review and rating found.");
+			}
+
+			//Shop Address
+			let address = '';
+			try {
+				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
+				address = await page.$$eval(
+					cssSelector['address'],
+					(divs) =>
+						Array.from(divs)
+							.map((div) => div.innerText)
+							.find((address) => address)
+				);
+
+				if (address === undefined) {
+					address = await page.$$eval(
+						cssSelector['address_backup'],
+						(divs) => divs[1]
+					);
+				}
+			} catch (ex) {
+				console.log("No address found.");
+			}
+
+			let website = '';
+			try {
+				//Website
+				await page.waitForSelector(cssSelector['website'], { timeout: 3000 });
+
+				website = await page.$$eval(
+					cssSelector['website'],
+					(divs) =>
+						Array.from(divs)
+							.map((div) => div.innerText)
+							.find((link) =>
+								/^((https?|ftp|smtp):\/\/)?(www.)?[a-z0-9]+(\.[a-z]{2,}){1,3}(#?\/?[a-zA-Z0-9#]+)*\/?(\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$/.test(
+									link
+								)
 							)
-						)
-			);
+				);
+			} catch(ex) {
+				console.log('No website found');
+			}
 
-			console.log(website || 'No website');
+			let phone = '';
+			try {
+				phone = await page.$$eval(
+					cssSelector['phone'],
+					(divs) =>
+						Array.from(divs)
+							.map((div) => div.innerText)
+							.find((phone) => phone)
+				);
+			} catch (ex) {
+				console.log('No phone found.');
+			}
 
-			const phone = await page.$$eval(
-				cssSelector['phone'],
-				(divs) =>
-					Array.from(divs)
-						.map((div) => div.innerText)
-						.find((phone) => phone)
-			);
-
-			console.log(phone || 'No phone');
 
 			const latLong = await getLatLong(url);
 
@@ -194,7 +232,8 @@ async function getPageData(url, page) {
 			const images = await getImages(page);
 
 			returnObj = {
-				placeName: shopName.trim(),
+				placeName: placeName.trim(),
+				category: category.trim(),
 				rating: reviewRating === undefined ? '' : reviewRating.trim(),
 				reviews: reviewCount,
 				address: address === undefined ? '' : address.trim(),
@@ -218,62 +257,71 @@ async function getPageData(url, page) {
 }
 
 const getImages = async (page) => {
-	await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.click('button[jsaction="pane.heroHeaderImage.click"]');
-	await page.waitForNavigation({ waitUntil: "networkidle0" });
+	try {
+		await page.waitForSelector('button[jsaction="pane.heroHeaderImage.click"]');
+		await page.click('button[jsaction="pane.heroHeaderImage.click"]');
+		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
-	let newScrollHeight = 0;
-	let scrollHeight = _puppeteerConfig['height'] - 200;
-	// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
-	let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
+		let newScrollHeight = 0;
+		let scrollHeight = _puppeteerConfig['height'] - 200;
+		// let divSelector = "#pane > div > div > div > div > div:nth-child(4) > div";
+		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
-	while (true) {
-		await page.waitForSelector(divSelector);
+		while (true) {
+			await page.waitForSelector(divSelector);
 
-		await page.evaluate(
-			(scrollHeight, divSelector) =>
-				document.querySelector(divSelector).scrollTo(0, scrollHeight),
-			scrollHeight,
-			divSelector
-		);
+			await page.evaluate(
+				(scrollHeight, divSelector) =>
+					document.querySelector(divSelector).scrollTo(0, scrollHeight),
+				scrollHeight,
+				divSelector
+			);
 
-		await page.waitForTimeout(800);
+			await page.waitForTimeout(300);
 
-		newScrollHeight = await page.$eval(
-			divSelector,
-			(div) => div.scrollHeight
-		);
+			newScrollHeight = await page.$eval(
+				divSelector,
+				(div) => div.scrollHeight
+			);
 
-		if (scrollHeight === newScrollHeight) {
-			break;
-		} else {
-			scrollHeight = newScrollHeight;
+			if (scrollHeight === newScrollHeight) {
+				break;
+			} else {
+				scrollHeight = newScrollHeight;
+			}
 		}
+
+		const images = await page.$$eval(
+			'a[data-photo-index] div.loaded',
+			(divs) => {
+				return Array.from(divs)
+					.map((div) => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replace(/"/g, ''));
+			}
+		);
+
+		console.log("Images: ", images);
+
+		await page.waitForTimeout(400);
+		try {
+			await page.goBack({ timeout: 1000, waitUntil: 'networkidle0' });
+		} catch (ex) {
+			await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
+			await page.waitForNavigation({ waitUntil: "networkidle0" });
+		}
+
+		return images;
+	} catch (ex) {
+		return [];
 	}
-
-	const images = await page.$$eval(
-		'a[data-photo-index] div.loaded',
-		(divs) => {
-			return Array.from(divs)
-				.map((div) => getComputedStyle(div).backgroundImage.replace('url(', '').replace(')', '').replace('"', ''));
-		}
-	);
-
-	console.log("Images: ", images);
-
-	await page.waitForTimeout(2000);
-	await page.goBack({ timeout: 3000, waitUntil: "networkidle0" });
-	// await page.click('button[jsaction="pane.topappbar.back;focus:pane.focusTooltip;blur:pane.blurTooltip"]');
-	// await page.waitForNavigation({ waitUntil: "networkidle0" });
-
-	return images;
 }
 
 const getReviews = async (page) => {
+	const reviewData = [];
+
 	try {
 		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
 
-		await page.waitForSelector(btnTriggerSelector, { timeout: 5000 });
+		await page.waitForSelector(btnTriggerSelector, { timeout: 3000 });
 		await page.click(btnTriggerSelector);
 		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
@@ -283,7 +331,7 @@ const getReviews = async (page) => {
 		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
 		while (true) {
-			await page.waitForSelector(divSelector, { timeout: 4000 });
+			await page.waitForSelector(divSelector, { timeout: 3000 });
 
 			await page.evaluate(
 				(scrollHeight, divSelector) =>
@@ -292,7 +340,7 @@ const getReviews = async (page) => {
 				divSelector
 			);
 
-			await page.waitForTimeout(1000);
+			await page.waitForTimeout(400);
 
 			newScrollHeight = await page.$eval(
 				divSelector,
@@ -312,9 +360,9 @@ const getReviews = async (page) => {
 				console.log("Click more review button...");
 
 				await button.click();
-				await delay.range(500, 3000);
+				await delay.range(400, 600);
 			}
-			await delay.range(100, 3500);
+			await delay.range(100, 250);
 		}
 
 		const reviews = await page.$$eval(
@@ -352,7 +400,7 @@ const getReviews = async (page) => {
 						author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 						title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
 						avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
-						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('bintang', '').trim(),
+						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('star', '').replace('bintang', '').trim(),
 						text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
 						length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
 						date: dateInEnglish,
@@ -362,11 +410,9 @@ const getReviews = async (page) => {
 
 		console.log("Reviews before validation: ", reviews);
 
-		const reviewData = [];
-
 		for (let i = 0; i < reviews.length; i++) {
 			const review = reviews[i];
-			if (review['length'] >= 80) {
+			if (review['length'] >= 60) {
 				review['date'] = moment(datejs(review['date'])).format('YYYY-MM-DD HH:mm:ss').toString();
 				reviewData.push(review);
 			}
@@ -377,9 +423,9 @@ const getReviews = async (page) => {
 		return reviewData;
 	} catch (ex) {
 		console.log("No reviews found.");
-		console.error(ex);
-		return [];
 	}
+
+	return reviewData;
 }
 
 const getWorkHours = async (page) => {
@@ -414,26 +460,31 @@ const getLinks = async (page) => {
 	let divSelector = '#pane > div > div > div > div > div > div[role="region"]:nth-child(1)';
 
 	while (true) {
-		await page.waitForSelector(divSelector);
+		try {
+			await page.waitForSelector(divSelector);
 
-		await page.evaluate(
-			(scrollHeight, divSelector) =>
-				document.querySelector(divSelector).scrollTo(0, scrollHeight),
-			scrollHeight,
-			divSelector
-		);
+			await page.evaluate(
+				(scrollHeight, divSelector) =>
+					document.querySelector(divSelector).scrollTo(0, scrollHeight),
+				scrollHeight,
+				divSelector
+			);
 
-		await page.waitForTimeout(1000);
+			await page.waitForTimeout(200);
 
-		newScrollHeight = await page.$eval(
-			divSelector,
-			(div) => div.scrollHeight
-		);
+			newScrollHeight = await page.$eval(
+				divSelector,
+				(div) => div.scrollHeight
+			);
 
-		if (scrollHeight === newScrollHeight) {
+			if (scrollHeight === newScrollHeight) {
+				break;
+			} else {
+				scrollHeight = newScrollHeight;
+			}
+		} catch (ex) {
+			console.log(ex);
 			break;
-		} else {
-			scrollHeight = newScrollHeight;
 		}
 	}
 
@@ -524,7 +575,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			"#pane > div > div > div > div > div > div > div",
 			(elements) =>
 				Array.from(elements).some(
-					(el) => (el.innerText === "Tidak ditemukan hasil" || el.innerText === "No results found")
+					(el) => (el.innerText.trim() == "No results found")
 				)
 		))
 	) {
@@ -534,10 +585,9 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 		await page.$$eval("button", (elements) => {
 			return Array.from(elements)
-				.find((el) => (el.getAttribute("jsaction") === "pane.paginationSection.nextPage" || el.getAttribute("aria-label") === "Next page"))
+				.find((el) => (el.getAttribute("jsaction") == "pane.paginationSection.nextPage"))
 				.click()
 		});
-
 
 		try {
 			await page.waitForNavigation({ waitUntil: "load", timeout: 3000 });
@@ -548,6 +598,8 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		linkCount = allLinks.length;
 
 		console.log(`Links count: ${linkCount}`);
+
+		await delay.range(200, 600);
 	}
 
 	console.log("Validating results...");
@@ -562,7 +614,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	await delay(2000);
+	await delay(1500);
 
 	console.log("Filtered Links ", uniqueLinks.length);
 
@@ -608,10 +660,17 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 						items_id: item.id,
 					});
 
+					let categoryName = await Model.CategoryName.findOne({ where: { name: data.category } });
+					if (categoryName == null) {
+						categoryName = await Model.CategoryName.create({
+							name: data.category,
+						});
+					}
+
 					const existingItemCategory = await Model.Category.findOne({ where: { items_id: item.id } });
 					if (existingItemCategory == null) {
 						await Model.Category.create({
-							categories_names_id: category,
+							categories_names_id: categoryName.id,
 							items_id: item.id,
 						});
 					}
@@ -655,7 +714,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			continue;
 		}
 
-		await delay.range(100, 1000);
+		await delay.range(100, 700);
 	}
 
 	await _puppeteerWrapper.cleanup();
