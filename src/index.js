@@ -21,8 +21,8 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const startCity = 'Espoo';
-	const startCategory = 'Association or organization';
+	const startCity = 'Alajärvi';
+	const startCategory = 'Sociocultural association';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll();
 	const categories = await Model.CategoryName.findAll();
@@ -627,6 +627,12 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		console.log('#' + no + ' Processing: "' + link + '...');
 
 		try {
+			const itemByLink = await Model.Item.findOne({ where: { link: link } });
+			if(itemByLink) {
+				console.error("Item exists in database.");
+				continue;
+			}
+
 			const data = await getPageData(link, page);
 
 			console.log("Data: ", data);
@@ -737,13 +743,15 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	} catch (e) {
 		_logger.logError('Thrown error:');
 		_logger.logError(e);
+
+		process.exit(1);
 	} finally {
 		await _puppeteerWrapper.cleanup();
 	}
 
 	console.log('Done. Close application process.');
 
-	await _logger.exportLogs(_filePaths.logsPath());
+	// await _logger.exportLogs(_filePaths.logsPath());
 })();
 
 //#endregion
