@@ -107,9 +107,28 @@ export const Item = sequelize.define('Item', {
 		type: DataTypes.TEXT,
 		allowNull: true,
 	},
+	phone: {
+		type: DataTypes.STRING,
+		allowNull: true,
+	},
 }, {
 	timestamps: false,
 	tableName: 'items'
+});
+
+export const ItemNoReview = sequelize.define('ItemNoReview', {
+	id: {
+		type: DataTypes.INTEGER,
+		primaryKey: true,
+		autoIncrement: true,
+	},
+	link: {
+		type: DataTypes.TEXT,
+		allowNull: true,
+	},
+}, {
+	timestamps: false,
+	tableName: 'items_no_reviews'
 });
 
 export const Comment = sequelize.define('Comment', {
@@ -226,6 +245,7 @@ export default {
 	CategoryName,
 	Category,
 	Item,
+	ItemNoReview,
 	Comment,
 	Image,
 	CityName,

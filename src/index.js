@@ -12,7 +12,7 @@ import moment from 'moment';
 //#region Setup - Dependency Injection-----------------------------------------------
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _puppeteerConfig = { headless: false, width: 900, height: 650, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 //#endregion
 
@@ -21,8 +21,8 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const startCity = 'Alajärvi';
-	const startCategory = 'Sociocultural association';
+	const startCity = 'Espoo';
+	const startCategory = 'Association or organization';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll();
 	const categories = await Model.CategoryName.findAll();
@@ -46,7 +46,7 @@ async function main() {
 	for (let i = startIndex; i < keywords.length; i++) {
 		const keyword = keywords[i];
 
-		await GMapScrapper(keyword.query, 10000, keyword.city, keyword.category);
+		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
 		await delay.range(1000, 3000);
 	}
 }
@@ -90,6 +90,10 @@ const changeLanguage = async (page) => {
 	await page.waitForTimeout(500);
 
 	await page.click('div.jfk-button:nth-child(1)');
+}
+
+const saveItemWithoutReviews = async (link) => {
+	await Model.ItemNoReview.create({link});
 }
 
 async function getPageData(url, page) {
@@ -169,6 +173,7 @@ async function getPageData(url, page) {
 
 			//Shop Address
 			let address = '';
+			let cityName = '';
 			try {
 				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
 				address = await page.$$eval(
@@ -185,8 +190,10 @@ async function getPageData(url, page) {
 						(divs) => divs[1]
 					);
 				}
+
+				cityName = typeof address == 'undefined' ? '' : (address.match(/\b(\w+)$/g) || [''])[0];
 			} catch (ex) {
-				console.log("No address found.");
+				console.log("No address and city found.");
 			}
 
 			let website = '';
@@ -234,11 +241,12 @@ async function getPageData(url, page) {
 			returnObj = {
 				placeName: placeName.trim(),
 				category: category.trim(),
-				rating: reviewRating === undefined ? '' : reviewRating.trim(),
+				rating: typeof reviewRating === 'undefined' ? '' : reviewRating.trim(),
 				reviews: reviewCount,
-				address: address === undefined ? '' : address.trim(),
-				website: website === undefined ? '' : website.trim(),
-				phone: phone === undefined ? '' : phone.trim().replace(/\-/g, ''),
+				address: typeof address === 'undefined' ? '' : address.trim(),
+				cityName: cityName,
+				website: typeof website === 'undefined' ? '' : website.trim(),
+				phone: typeof phone === 'undefined' ? '' : phone.trim().replace(/\-/g, ''),
 				latitude: latLong[0],
 				longitude: latLong[1],
 				main_image: images[0],
@@ -252,6 +260,8 @@ async function getPageData(url, page) {
 
 		return returnObj;
 	} else {
+		await saveItemWithoutReviews(url);
+
 		return {};
 	}
 }
@@ -655,14 +665,15 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 						image: data.main_image,
 						phone: data.phone,
 						date_created: moment().format('YYYY-MM-DD HH:mm:ss').toString(),
-						item_city: city,
+						item_city: data.cityName || city,
 						link: link,
 					});
 
 					console.log("Item created: ", item);
 
+					const cityName = Model.CityName.findOne({ where: { name: data.cityName } });
 					await Model.City.create({
-						cities_names_id: city,
+						cities_names_id: cityName.id || city,
 						items_id: item.id,
 					});
 
@@ -709,6 +720,8 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 							});
 						}
 					}
+				} else {
+					await item.update({phone: data.phone});
 				}
 			}
 
