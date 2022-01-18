@@ -1,3 +1,5 @@
+const { timers } = require("jquery");
+
 module.exports = {
   apps : [{
     name: 'gmap-scraper',
@@ -10,7 +12,7 @@ module.exports = {
     max_memory_restart: '2G',
     restart_delay: 4000,
     listen_timeout: 5000,
-    error_file: 'logs/gmap-error.log',
-    out_file: 'logs/gmap-out.log',
+    error_file: 'logs/gmap-error-' + ~~(Date.now() / 1000) +'.log',
+    out_file: 'logs/gmap-out-' + ~~(Date.now() / 1000) +'.log',
   }]
 };
