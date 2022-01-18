@@ -6,15 +6,11 @@
   "scripts": {
     "babel_build": "babel --source-maps --out-dir=babel-output src",
     "copy-babel-output": "node import-babel-scripts.js",
-    "start": "npm run babel_build & npm run copy-babel-output & electron .",
     "start-cli": "npm run babel_build && node ./babel-output/index.js",
-    "start-pm2": "npm run babel_build && pm2 start ./babel-output/index.js",
+    "start-pm2": "npm run babel_build && pm2 start ecosystem.config.js --time",
     "start-review": "npm run babel_build && node ./babel-output/review.js",
-    "start_dev": "babel-node --presets env,stage-3 src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dist": "npm run babel_build & npm run copy-babel-output & build",
-    "packw": "electron-builder -w",
-    "packl": "electron-builder -l"
+    "dist": "npm run babel_build & npm run copy-babel-output & build"
   },
   "author": "Hendro Wibowo",
   "license": "ISC",
