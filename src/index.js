@@ -21,11 +21,11 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const startCity = 'Espoo';
+	const startCity = 'Äänekoski';
 	const startCategory = 'Association or organization';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
-	const cities = await Model.CityName.findAll();
-	const categories = await Model.CategoryName.findAll();
+	const cities = await Model.CityName.findAll({order: [['id', 'asc']]});
+	const categories = await Model.CategoryName.findAll({order: [['id', 'asc']]});
 	const keywords = [];
 
 	cities.forEach(async (city) => {
@@ -47,7 +47,7 @@ async function main() {
 		const keyword = keywords[i];
 
 		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
-		await delay.range(1000, 3000);
+		await delay.range(500, 1000);
 	}
 }
 
@@ -117,13 +117,14 @@ async function getPageData(url, page) {
 		let returnObj = {};
 
 		try {
-			const allReviews = await getReviews(page);
+			const allReviews = await getReviews(page, url);
 
 			try {
-				await page.goBack({ timeout: 2000, waitUntil: 'networkidle0' });
+				await page.goBack({ timeout: 3000, waitUntil: 'networkidle0' });
 			} catch (ex) {
 				try {
-					await page.click('button[jscontroller="soHxf"]');
+					await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { timeout: 3000, waitUntil: 'networkidle2' });
+					await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
 				} catch (ex) {
 					await page.goto(url);
 				}
@@ -140,7 +141,7 @@ async function getPageData(url, page) {
 			let placeName = ''
 			try {
 				//Shop Name
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span");
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span", {timeout: 1500});
 				placeName = await page.$eval(
 					cssSelector['shop_name'],
 					(name) => name.textContent
@@ -151,7 +152,7 @@ async function getPageData(url, page) {
 
 			let category = ''
 			try {
-				await page.waitForSelector('button[jsaction="pane.rating.category"]');
+				await page.waitForSelector('button[jsaction="pane.rating.category"]', { timeout: 1500 });
 				category = await page.$eval(
 					'button[jsaction="pane.rating.category"]',
 					(category) => category.textContent
@@ -162,7 +163,7 @@ async function getPageData(url, page) {
 
 			let reviewRating = '';
 			try {
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf");
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf", { timeout: 1500 });
 				reviewRating = await page.$eval(
 					cssSelector['rating'],
 					(rating) => rating.textContent
@@ -175,7 +176,7 @@ async function getPageData(url, page) {
 			let address = '';
 			let cityName = '';
 			try {
-				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)");
+				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)", { timeout: 1500 });
 				address = await page.$$eval(
 					cssSelector['address'],
 					(divs) =>
@@ -191,7 +192,8 @@ async function getPageData(url, page) {
 					);
 				}
 
-				cityName = typeof address == 'undefined' ? '' : (address.match(/\b(\w+)$/g) || [''])[0];
+				const addressData = address.split(' ') || [''];
+				cityName = typeof address == 'undefined' ? '' : addressData[addressData.length - 1];
 			} catch (ex) {
 				console.log("No address and city found.");
 			}
@@ -199,7 +201,7 @@ async function getPageData(url, page) {
 			let website = '';
 			try {
 				//Website
-				await page.waitForSelector(cssSelector['website'], { timeout: 3000 });
+				await page.waitForSelector(cssSelector['website'], { timeout: 1000 });
 
 				website = await page.$$eval(
 					cssSelector['website'],
@@ -299,6 +301,8 @@ const getImages = async (page) => {
 			} else {
 				scrollHeight = newScrollHeight;
 			}
+
+			console.log("Collecting images...");
 		}
 
 		const images = await page.$$eval(
@@ -311,7 +315,7 @@ const getImages = async (page) => {
 
 		console.log("Images: ", images);
 
-		await page.waitForTimeout(400);
+		await page.waitForTimeout(200);
 		try {
 			await page.goBack({ timeout: 1000, waitUntil: 'networkidle0' });
 		} catch (ex) {
@@ -325,13 +329,13 @@ const getImages = async (page) => {
 	}
 }
 
-const getReviews = async (page) => {
+const getReviews = async (page, url) => {
 	const reviewData = [];
 
 	try {
 		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
 
-		await page.waitForSelector(btnTriggerSelector, { timeout: 3000 });
+		await page.waitForSelector(btnTriggerSelector, { timeout: 1000 });
 		await page.click(btnTriggerSelector);
 		await page.waitForNavigation({ waitUntil: "networkidle0" });
 
@@ -341,7 +345,7 @@ const getReviews = async (page) => {
 		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
 		while (true) {
-			await page.waitForSelector(divSelector, { timeout: 3000 });
+			await page.waitForSelector(divSelector, { timeout: 1000 });
 
 			await page.evaluate(
 				(scrollHeight, divSelector) =>
@@ -350,7 +354,7 @@ const getReviews = async (page) => {
 				divSelector
 			);
 
-			await page.waitForTimeout(400);
+			await page.waitForTimeout(200);
 
 			newScrollHeight = await page.$eval(
 				divSelector,
@@ -379,42 +383,35 @@ const getReviews = async (page) => {
 			'div.ODSEW-ShBeI-content',
 			(divs) => Array.from(divs)
 				.map((div) => {
-					const replaceString = {
-						"setahun": "a year",
-						"sebulan": "a month",
-						"seminggu": "a week",
-						"sehari": "a day",
-						"sejam": "an hour",
-						"semenit": "a minute",
-						"tahun": "years",
-						"bulan": "months",
-						"minggu": "weeks",
-						"hari": "days",
-						"jam": "hours",
-						"menit": "minutes",
-						"lalu": "ago"
-					};
-					let dateInEnglish = div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim();
+					try {
+						const dateText = div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim();
+						const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
+						const startTrimIndex = reviewText.indexOf('(Original)') + 10;
 
-					for (const key in replaceString) {
-						if (Object.hasOwnProperty.call(replaceString, key)) {
-							const replacement = replaceString[key];
-							dateInEnglish = dateInEnglish.replace(key, replacement);
-						}
+						return {
+							author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
+							title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
+							avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
+							rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('star', '').replace('bintang', '').trim(),
+							text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
+							length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
+							date: dateText,
+						};
+					} catch (ex) {
+						const dateText = div.querySelector('.ODSEW-ShBeI-RgZmSc-date-J42Xof-Hjleke span').innerText.trim();
+						const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
+						const startTrimIndex = reviewText.indexOf('(Original)') + 10;
+
+						return {
+							author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
+							title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
+							avatar: div.querySelector('a.ODSEW-ShBeI-t1uDwd-hSRGPd img').getAttribute('src').trim(),
+							rating: div.querySelector('.ODSEW-ShBeI-RGxYjb-wcwwM').innerText().split('/')[0] || 1,
+							text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
+							length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
+							date: dateText,
+						};
 					}
-
-					const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
-					const startTrimIndex = reviewText.indexOf('(Original)') + 10;
-
-					return {
-						author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
-						title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
-						avatar: div.querySelector('.ODSEW-ShBeI-content a[target^="_blank"] img').getAttribute('src').trim(),
-						rating: div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-H1e3jb').getAttribute('aria-label').replace('stars', '').replace('star', '').replace('bintang', '').trim(),
-						text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
-						length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
-						date: dateInEnglish,
-					};
 				})
 		);
 
@@ -428,11 +425,16 @@ const getReviews = async (page) => {
 			}
 		}
 
+		if(reviews.length === 0) {
+			saveItemWithoutReviews(url);
+		}
+
 		console.log("Reviews after validation: ", reviewData);
 
 		return reviewData;
 	} catch (ex) {
 		console.log("No reviews found.");
+		console.log(ex);
 	}
 
 	return reviewData;
@@ -442,7 +444,7 @@ const getWorkHours = async (page) => {
 	try {
 		const tableSelector = 'table.y0skZc-jyrRxf-Tydcue.NVpwyf-qJTHM-ibL1re';
 
-		await page.waitForSelector(tableSelector, { timeout: 5000 });
+		await page.waitForSelector(tableSelector, { timeout: 1000 });
 
 		const workHours = await page.$$eval(
 			`${tableSelector} tr`,
@@ -493,7 +495,7 @@ const getLinks = async (page) => {
 				scrollHeight = newScrollHeight;
 			}
 		} catch (ex) {
-			console.log(ex);
+			console.log("Finish collecting links...");
 			break;
 		}
 	}
@@ -557,7 +559,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	// });
 
 	page.on('dialog', async dialog => {
-		await delay(1000);
+		await delay(600);
 		await dialog.accept();
 	});
 
@@ -600,7 +602,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		});
 
 		try {
-			await page.waitForNavigation({ waitUntil: "load", timeout: 3000 });
+			await page.waitForNavigation({ waitUntil: "load", timeout: 1000 });
 		} catch (ex) {
 			break;
 		}
@@ -609,7 +611,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 		console.log(`Links count: ${linkCount}`);
 
-		await delay.range(200, 600);
+		await delay.range(100, 400);
 	}
 
 	console.log("Validating results...");
@@ -624,7 +626,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	await delay(1500);
+	await delay(500);
 
 	console.log("Filtered Links ", uniqueLinks.length);
 
@@ -733,10 +735,10 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			continue;
 		}
 
-		await delay.range(100, 700);
+		await delay.range(100, 300);
 	}
 
-	await _puppeteerWrapper.cleanup();
+	// await _puppeteerWrapper.cleanup();
 
 	const doneMessage = `Done scraping processes with keywords "${searchQuery}". Here is the statistic data: ${successCount} success, ${failedCount} failed\n`;
 
