@@ -7,6 +7,7 @@ import $ from 'jquery';
 import delay from 'delay';
 import datejs from 'date.js';
 import moment from 'moment';
+import yargs from 'yargs';
 //#endregion
 
 //#region Setup - Dependency Injection-----------------------------------------------
@@ -14,6 +15,7 @@ const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
 const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
+const _args = yargs.argv;
 //#endregion
 
 const countryCode = 'FI';
@@ -21,8 +23,10 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const startCity = 'Äänekoski';
-	const startCategory = 'Association or organization';
+	console.log(_args);
+
+	const startCity = _args['city'] || _args['c'] || 'Espoo';
+	const startCategory = _args['category'] || _args['t'] || 'Association or organization';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll({order: [['id', 'asc']]});
 	const categories = await Model.CategoryName.findAll({order: [['id', 'asc']]});
@@ -47,7 +51,7 @@ async function main() {
 		const keyword = keywords[i];
 
 		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
-		await delay.range(500, 1000);
+		await delay.range(200, 600);
 	}
 }
 
@@ -59,15 +63,15 @@ const changeLocation = async (countryCode, page) => {
 
 	const moreRegionLinkSelector = 'a#regionanchormore';
 	await page.waitForSelector(moreRegionLinkSelector, { waitUntil: 'networkidle2' });
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(400);
 	await page.click(moreRegionLinkSelector);
 
 	await page.waitForSelector('#regionother');
 
-	await page.waitForTimeout(300);
+	await page.waitForTimeout(100);
 
 	await page.click(`div[data-value="${countryCode}"`);
-	await page.waitForTimeout(600);
+	await page.waitForTimeout(500);
 	await page.click('div.jfk-button:nth-child(1)');
 }
 
@@ -77,17 +81,17 @@ const changeLanguage = async (page) => {
 	await page.waitForSelector(locationMenuSelector);
 	await page.click(locationMenuSelector);
 
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(300);
 
 	await page.waitForSelector('a[aria-controls="langSec"]');
 	await page.click('a[aria-controls="langSec"]');
 
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(400);
 
 	await page.waitForSelector('a#langanchormore');
 	await page.click(`div[data-value="en"`);
 
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(200);
 
 	await page.click('div.jfk-button:nth-child(1)');
 }
@@ -119,40 +123,32 @@ async function getPageData(url, page) {
 		try {
 			const allReviews = await getReviews(page, url);
 
-			try {
-				await page.goBack({ timeout: 3000, waitUntil: 'networkidle0' });
-			} catch (ex) {
-				try {
-					await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { timeout: 3000, waitUntil: 'networkidle2' });
-					await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
-				} catch (ex) {
-					await page.goto(url);
-				}
-
-				await page.waitForNavigation({ waitUntil: "networkidle0" });
-			}
-
 			if (allReviews.length == 0) {
 				return {};
 			}
+
+			await page.goto(url);
+			await page.waitForNavigation({ waitUntil: "load", timeout: 3000 });
 
 			console.log("Reviews after validation: ", allReviews);
 
 			let placeName = ''
 			try {
 				//Shop Name
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span", {timeout: 1500});
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span", {timeout: 5000});
 				placeName = await page.$eval(
 					cssSelector['shop_name'],
 					(name) => name.textContent
 				);
+
 			} catch (ex) {
+				await page.screenshot({path: 'screenshots/no-place-name-'+(+new Date)+'.png'});
 				console.log("No place name found.");
 			}
 
 			let category = ''
 			try {
-				await page.waitForSelector('button[jsaction="pane.rating.category"]', { timeout: 1500 });
+				await page.waitForSelector('button[jsaction="pane.rating.category"]', { timeout: 5000 });
 				category = await page.$eval(
 					'button[jsaction="pane.rating.category"]',
 					(category) => category.textContent
@@ -163,7 +159,7 @@ async function getPageData(url, page) {
 
 			let reviewRating = '';
 			try {
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf", { timeout: 1500 });
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf", { timeout: 5000 });
 				reviewRating = await page.$eval(
 					cssSelector['rating'],
 					(rating) => rating.textContent
@@ -176,7 +172,7 @@ async function getPageData(url, page) {
 			let address = '';
 			let cityName = '';
 			try {
-				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)", { timeout: 1500 });
+				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)", { timeout: 5000 });
 				address = await page.$$eval(
 					cssSelector['address'],
 					(divs) =>
@@ -289,7 +285,7 @@ const getImages = async (page) => {
 				divSelector
 			);
 
-			await page.waitForTimeout(300);
+			await page.waitForTimeout(100);
 
 			newScrollHeight = await page.$eval(
 				divSelector,
@@ -315,7 +311,7 @@ const getImages = async (page) => {
 
 		console.log("Images: ", images);
 
-		await page.waitForTimeout(200);
+		await page.waitForTimeout(100);
 		try {
 			await page.goBack({ timeout: 1000, waitUntil: 'networkidle0' });
 		} catch (ex) {
@@ -354,7 +350,7 @@ const getReviews = async (page, url) => {
 				divSelector
 			);
 
-			await page.waitForTimeout(200);
+			await page.waitForTimeout(100);
 
 			newScrollHeight = await page.$eval(
 				divSelector,
@@ -374,9 +370,9 @@ const getReviews = async (page, url) => {
 				console.log("Click more review button...");
 
 				await button.click();
-				await delay.range(400, 600);
+				await delay.range(100, 300);
 			}
-			await delay.range(100, 250);
+			await delay.range(100, 150);
 		}
 
 		const reviews = await page.$$eval(
@@ -559,7 +555,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	// });
 
 	page.on('dialog', async dialog => {
-		await delay(600);
+		await delay(300);
 		await dialog.accept();
 	});
 
@@ -569,14 +565,14 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		await changeLanguage(page);
 	} catch (ex) {
 		console.log(ex);
-		await page.waitForTimeout(800);
+		await page.waitForTimeout(300);
 		await page.reload({ waitUntil: ["networkidle0", "domcontentloaded"] });
 	}
 
 	await page.waitForNavigation({ waitUntil: "domcontentloaded" });
 	await page.waitForSelector('div#gs_lc50 input#searchboxinput');
 
-	await page.type('div#gs_lc50 input#searchboxinput', searchQuery, { delay: 10 });
+	await page.type('div#gs_lc50 input#searchboxinput', searchQuery, { delay: 100 });
 	await page.keyboard.press('Enter');
 
 	let allLinks = [];
@@ -611,7 +607,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 		console.log(`Links count: ${linkCount}`);
 
-		await delay.range(100, 400);
+		await delay.range(500, 150);
 	}
 
 	console.log("Validating results...");
@@ -626,7 +622,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		uniqueLinks = uniqueLinks.slice(0, maxLinks);
 	}
 
-	await delay(500);
+	await delay(200);
 
 	console.log("Filtered Links ", uniqueLinks.length);
 
@@ -735,10 +731,10 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			continue;
 		}
 
-		await delay.range(100, 300);
+		await delay.range(100, 200);
 	}
 
-	// await _puppeteerWrapper.cleanup();
+	await _puppeteerWrapper.cleanup();
 
 	const doneMessage = `Done scraping processes with keywords "${searchQuery}". Here is the statistic data: ${successCount} success, ${failedCount} failed\n`;
 
