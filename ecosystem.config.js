@@ -3,7 +3,7 @@ module.exports = {
       {
       name: 'gmap-scraper-1',
       script: 'babel-output/index.js',
-      args: "--city=\"Haapavesi\" --category=\"Association or organization\"",
+      args: "--scraper=1 --city=\"Akaa\" --category=\"Association or organization\"",
       watch: ['babel-output'],
       // Specify delay between watch interval
       watch_delay: 500,
@@ -17,7 +17,7 @@ module.exports = {
     }, {
       name: 'gmap-scraper-2',
       script: 'babel-output/index.js',
-      args: "--city=\"Hämeenlinna\" --category=\"Association or organization\"",
+      args: "--scraper=2 --city=\"Lapua\" --category=\"Association or organization\"",
       watch: ['babel-output'],
       // Specify delay between watch interval
       watch_delay: 500,

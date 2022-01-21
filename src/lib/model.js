@@ -241,6 +241,34 @@ export const City = sequelize.define('City', {
 	tableName: 'cities'
 });
 
+export const ScrapingProgress = sequelize.define('ScrapingProgress', {
+	// Model attributes are defined here
+	id: {
+		type: DataTypes.INTEGER,
+		primaryKey: true,
+		autoIncrement: true,
+	},
+	scraper_id: {
+		type: DataTypes.INTEGER,
+		allowNull: true,
+	},
+	city_id: {
+		type: DataTypes.INTEGER,
+		allowNull: true,
+	},
+	category_id: {
+		type: DataTypes.INTEGER,
+		allowNull: true,
+	},
+	scraping_date: {
+		type: DataTypes.DATE,
+		allowNull: true,
+	},
+}, {
+	timestamps: false,
+	tableName: 'scraping_progress'
+});
+
 export default {
 	CategoryName,
 	Category,
@@ -250,4 +278,5 @@ export default {
 	Image,
 	CityName,
 	City,
+	ScrapingProgress,
 };

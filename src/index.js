@@ -3,7 +3,6 @@ import { FilePaths } from './lib/file-paths.js';
 import { PuppeteerWrapper } from './lib/puppeteer-wrapper';
 import { CSS_SELECTOR as cssSelector } from './config';
 import Model from './lib/model';
-import $ from 'jquery';
 import delay from 'delay';
 import datejs from 'date.js';
 import moment from 'moment';
@@ -23,8 +22,9 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	const startCity = _args['city'] || _args['c'] || 'Espoo';
-	const startCategory = _args['category'] || _args['t'] || 'Association or organization';
+	let startCity = _args['city'] || _args['c'] || 'Espoo';
+	let startCategory = _args['category'] || _args['t'] || 'Association or organization';
+	const scraperId = _args['scraper'] || _args['p'] || '1';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll({order: [['id', 'asc']]});
 	const categories = await Model.CategoryName.findAll({order: [['id', 'asc']]});
@@ -43,10 +43,30 @@ async function main() {
 
 	const startIndex = keywords.map(i => i.query).indexOf(startQuery);
 
+	const lastScrapingActivity = await Model.ScrapingProgress.findOne({
+		where: {scraper_id: scraperId},
+		order: [['id', 'desc']],
+	});
+
+	if (lastScrapingActivity) {
+		const lastCity = await Model.CityName.findOne({where: {id: lastScrapingActivity.city_id}});
+		const lastCategory = await Model.CategoryName.findOne({where: {id: lastScrapingActivity.category_id}});
+
+		startCity = lastCity.name;
+		startCategory = lastCategory.name;
+	}
+
 	console.log(`Begin scrapping data with starting query "${startQuery}"`);
 
 	for (let i = startIndex; i < keywords.length; i++) {
 		const keyword = keywords[i];
+
+		await Model.ScrapingProgress.create({
+			scraper_id: scraperId,
+			city_id: keyword.city,
+			category_id: keyword.category,
+			scraping_date: moment().format('YYYY-MM-DD HH:mm:ss')
+		});
 
 		await GMapScrapper(keyword.query, 0, keyword.city, keyword.category);
 		await delay.range(200, 600);
