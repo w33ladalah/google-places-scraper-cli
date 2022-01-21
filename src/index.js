@@ -23,8 +23,6 @@ const countryCode = 'FI';
 //#region Main ---------------------------------------------------------------------
 
 async function main() {
-	console.log(_args);
-
 	const startCity = _args['city'] || _args['c'] || 'Espoo';
 	const startCategory = _args['category'] || _args['t'] || 'Association or organization';
 	const startQuery = `${startCategory} in ${startCity}, Finland`;
@@ -123,12 +121,20 @@ async function getPageData(url, page) {
 		try {
 			const allReviews = await getReviews(page, url);
 
+			try {
+				await page.goBack({ timeout: 3000, waitUntil: 'networkidle0' });
+			} catch (ex) {
+				await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { timeout: 3000, waitUntil: 'networkidle2' });
+				await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
+			} finally {
+				await page.goto(url, {waitUntil: 'networkidle2', timeout: 10000});
+			}
+
 			if (allReviews.length == 0) {
 				return {};
 			}
 
-			await page.goto(url);
-			await page.waitForNavigation({ waitUntil: "load", timeout: 3000 });
+			await page.waitForNavigation({ waitUntil: "load", timeout: 5000 });
 
 			console.log("Reviews after validation: ", allReviews);
 
@@ -607,7 +613,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 		console.log(`Links count: ${linkCount}`);
 
-		await delay.range(500, 150);
+		await delay.range(100, 200);
 	}
 
 	console.log("Validating results...");
