@@ -696,10 +696,12 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 			const data = await getPageData(link, page);
 
-			console.log("Data: ", data);
-
 			if (Object.hasOwnProperty.call(data, 'placeName')) {
 				const item = await Model.Item.findOne({ where: { name: data.placeName } });
+				const excludeCities = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man', 'Australia', 'Kong', 'Germany', 'Norway', '188990'];
+
+				if (excludeCities.includes(data.cityName)) continue;
+
 				if (item == null) {
 					console.log('Save the items');
 
@@ -722,14 +724,19 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 					console.log("Item created: ", item);
 
-					const cityName = Model.CityName.findOne({ where: { name: data.cityName } });
+					let cityName = Model.CityName.findOne({ where: { name: data.cityName } });
+					if (cityName == null && data.cityName != '' && isNaN(parseInt(data.cityName))) {
+						cityName = await Model.CityName.create({
+							name: data.cityName,
+						});
+					}
 					await Model.City.create({
 						cities_names_id: cityName.id || city,
 						items_id: item.id,
 					});
 
 					let categoryName = await Model.CategoryName.findOne({ where: { name: data.category } });
-					if (categoryName == null && (data.category != '')) {
+					if (categoryName == null && data.category != '') {
 						categoryName = await Model.CategoryName.create({
 							name: data.category,
 						});
