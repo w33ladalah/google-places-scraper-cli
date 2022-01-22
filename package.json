@@ -1,7 +1,7 @@
 {
-  "name": "google-place-scraper",
+  "name": "google-place-scraper-cli",
   "version": "1.1.0",
-  "description": "A desktop application to scrap Google Place or Business from Google Map search results and export to excel file.",
+  "description": "The command line application to scrape Google Maps using Puppeteer.",
   "main": "index.js",
   "scripts": {
     "babel_build": "babel --source-maps --out-dir=babel-output src",
@@ -12,7 +12,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dist": "npm run babel_build & npm run copy-babel-output & build"
   },
-  "author": "Hendro Wibowo",
+  "author": "Hendro Wibowo (hendrowimail@gmail.com)",
   "license": "ISC",
   "dependencies": {
     "axios": "^0.21.4",
@@ -35,35 +35,5 @@
     "babel-preset-env": "^1.7.0",
     "babel-preset-stage-3": "^6.24.1",
     "babel-watch": "^7.5.0"
-  },
-  "build": {
-    "appId": "HendroWibowo.GooglePlaceScraper",
-    "productName": "Google Place Scraper",
-    "copyright": "Hendro Wibowo",
-    "directories": {
-      "app": ".",
-      "output": "build",
-      "buildResources": "assets"
-    },
-    "files": [
-      "package.json",
-      "./**/*",
-      "node_modules"
-    ],
-    "nsis": {
-      "installerIcon": "assets/images/favicon.ico",
-      "uninstallerIcon": "assets/images/favicon.ico",
-      "allowToChangeInstallationDirectory": true,
-      "runAfterFinish": true,
-      "oneClick": false
-    },
-    "win": {
-      "icon": "assets/images/ms-icon-310x310.png",
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage",
-      "category": "Utility"
-    }
   }
 }
