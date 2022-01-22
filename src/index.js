@@ -12,7 +12,7 @@ import yargs from 'yargs';
 //#region Setup - Dependency Injection-----------------------------------------------
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _puppeteerConfig = { headless: true, width: 900, height: 650, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, width: 1300, height: 780, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 const _args = yargs.argv;
 //#endregion
@@ -24,8 +24,8 @@ const countryCode = 'FI';
 async function main() {
 	let startCity = _args['city'] || _args['c'] || 'Espoo';
 	let startCategory = _args['category'] || _args['t'] || 'Association or organization';
+	let startQuery = `${startCategory} in ${startCity}, Finland`;
 	const scraperId = _args['scraper'] || _args['p'] || '1';
-	const startQuery = `${startCategory} in ${startCity}, Finland`;
 	const cities = await Model.CityName.findAll({order: [['id', 'asc']]});
 	const categories = await Model.CategoryName.findAll({order: [['id', 'asc']]});
 	const keywords = [];
@@ -41,21 +41,42 @@ async function main() {
 		});
 	});
 
-	const startIndex = keywords.map(i => i.query).indexOf(startQuery);
-
 	const lastScrapingActivity = await Model.ScrapingProgress.findOne({
 		where: {scraper_id: scraperId},
 		order: [['id', 'desc']],
 	});
 
 	if (lastScrapingActivity) {
-		const lastCity = await Model.CityName.findOne({where: {id: lastScrapingActivity.city_id}});
-		const lastCategory = await Model.CategoryName.findOne({where: {id: lastScrapingActivity.category_id}});
+		let lastCityId = parseInt(lastScrapingActivity.city_id),
+			lastCategoryId = parseInt(lastScrapingActivity.category_id);
+
+		const lastActivities = await Model.ScrapingProgress.findAll({
+			where: {
+				scraper_id: scraperId,
+				city_id: lastCityId,
+				category_id: lastCategoryId,
+			},
+			order: [['scraping_date', 'desc']],
+		});
+
+		console.log(lastActivities);
+
+		if (lastActivities.length > 1) {
+			lastCityId = lastCityId + 1;
+			lastCategoryId = lastCategoryId + 1;
+		}
+
+		const lastCity = await Model.CityName.findOne({where: {id: lastCityId}});
+		const lastCategory = await Model.CategoryName.findOne({where: {id: lastCategoryId}});
 
 		startCity = lastCity.name;
 		startCategory = lastCategory.name;
+		startQuery = `${startCategory} in ${startCity}, Finland`;
 	}
 
+	const startIndex = keywords.map(i => i.query).indexOf(startQuery);
+
+	console.log("==============================================================================================================================================================");
 	console.log(`Begin scrapping data with starting query "${startQuery}"`);
 
 	for (let i = startIndex; i < keywords.length; i++) {
@@ -74,6 +95,8 @@ async function main() {
 }
 
 const changeLocation = async (countryCode, page) => {
+	console.log("Change location to Finland.");
+
 	const locationMenuSelector = 'button[jsaction="fineprint.country"]';
 
 	await page.waitForSelector(locationMenuSelector);
@@ -94,6 +117,8 @@ const changeLocation = async (countryCode, page) => {
 }
 
 const changeLanguage = async (page) => {
+	console.log('Change language to English.');
+
 	const locationMenuSelector = 'button[jsaction="fineprint.country"]';
 
 	await page.waitForSelector(locationMenuSelector);
@@ -120,7 +145,7 @@ const saveItemWithoutReviews = async (link) => {
 
 async function getPageData(url, page) {
 	await page.goto(url);
-	await page.waitForNavigation({ timeout: 5000, waitUntil: ['networkidle0'] });
+	await page.waitForNavigation({ timeout: 5000 });
 
 	//Reviews
 	let reviewCount = 0;
@@ -147,7 +172,7 @@ async function getPageData(url, page) {
 				await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { timeout: 3000, waitUntil: 'networkidle2' });
 				await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
 			} finally {
-				await page.goto(url, {waitUntil: 'networkidle2', timeout: 10000});
+				await page.goto(url, {timeout: 10000});
 			}
 
 			if (allReviews.length == 0) {
@@ -488,6 +513,8 @@ const getWorkHours = async (page) => {
 
 //Get Links
 const getLinks = async (page) => {
+	console.log("Collecting links...");
+
 	// Scrolling to bottom of page
 	let newScrollHeight = 0;
 	let scrollHeight = _puppeteerConfig['height'];
@@ -702,7 +729,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 					});
 
 					let categoryName = await Model.CategoryName.findOne({ where: { name: data.category } });
-					if (categoryName == null) {
+					if (categoryName == null && (data.category != '')) {
 						categoryName = await Model.CategoryName.create({
 							name: data.category,
 						});
