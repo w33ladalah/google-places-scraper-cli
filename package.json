@@ -9,8 +9,7 @@
     "start-cli": "npm run babel_build && node ./babel-output/index.js",
     "start-pm2": "npm run babel_build && pm2 start ecosystem.config.js --time",
     "start-review": "npm run babel_build && node ./babel-output/review.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dist": "npm run babel_build & npm run copy-babel-output & build"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Hendro Wibowo (hendrowimail@gmail.com)",
   "license": "ISC",
