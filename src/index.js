@@ -69,8 +69,8 @@ async function main() {
 		const lastCity = await Model.CityName.findOne({where: {id: lastCityId}});
 		const lastCategory = await Model.CategoryName.findOne({where: {id: lastCategoryId}});
 
-		startCity = lastCity.name;
-		startCategory = lastCategory.name;
+		startCity = lastCity.name || 'Espoo';
+		startCategory = lastCategory.hasOwnProperty('name') ? lastCategory.name : 'Interesting places';
 		startQuery = `${startCategory} in ${startCity}, Finland`;
 	}
 
@@ -698,7 +698,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 
 			if (Object.hasOwnProperty.call(data, 'placeName')) {
 				const item = await Model.Item.findOne({ where: { name: data.placeName } });
-				const excludeCities = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man', 'Australia', 'Kong', 'Germany', 'Norway', '188990'];
+				const excludeCities = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man', 'Australia', 'Kong', 'Germany', 'Norway', 'Indonesia', '188990'];
 
 				if (excludeCities.includes(data.cityName)) continue;
 
