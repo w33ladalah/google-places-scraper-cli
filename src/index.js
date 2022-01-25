@@ -47,30 +47,64 @@ async function main() {
 	});
 
 	if (lastScrapingActivity) {
-		let lastCityId = parseInt(lastScrapingActivity.city_id),
-			lastCategoryId = parseInt(lastScrapingActivity.category_id);
+		let currentCityId = parseInt(lastScrapingActivity.city_id),
+			currentCategoryId = parseInt(lastScrapingActivity.category_id);
 
 		const lastActivities = await Model.ScrapingProgress.findAll({
 			where: {
 				scraper_id: scraperId,
-				city_id: lastCityId,
-				category_id: lastCategoryId,
+				city_id: currentCityId,
+				category_id: currentCategoryId,
 			},
 			order: [['scraping_date', 'desc']],
 		});
 
-		console.log(lastActivities);
+		// console.log({ 'last city': lastActivities.city_id, 'last category': lastActivities.category_id});return;
 
-		if (lastActivities.length > 1) {
-			lastCityId = lastCityId + 1;
-			lastCategoryId = lastCategoryId + 1;
+		let retryNum = 0;
+		while (true) {
+			try {
+				if(retryNum > 10) {
+					const firstCity = await Model.CityName.findOne({ order: [['id', 'asc']] });
+					startCity = firstCity.name;
+					break;
+				}
+
+				if (lastActivities.length > 1) {
+					currentCityId = currentCityId + 1;
+				}
+
+				const currentCity = await Model.CityName.findOne({where: {id: currentCityId}});
+				startCity = currentCity.name;
+				break;
+			} catch (ex) {
+				retryNum++;
+				continue;
+			}
 		}
 
-		const lastCity = await Model.CityName.findOne({where: {id: lastCityId}});
-		const lastCategory = await Model.CategoryName.findOne({where: {id: lastCategoryId}});
+		retryNum = 0;
+		while (true) {
+			try {
+				if (retryNum > 10) {
+					const firstCategory = await Model.CategoryName.findOne({ order: [['id', 'asc']] });
+					startCategory = firstCategory.name;
+					break;
+				}
 
-		startCity = lastCity.name || 'Espoo';
-		startCategory = lastCategory.hasOwnProperty('name') ? lastCategory.name : 'Interesting places';
+				if (lastActivities.length > 1) {
+					currentCategoryId = currentCategoryId + 1;
+				}
+
+				const currentCategory = await Model.CategoryName.findOne({where: {id: currentCategoryId}});
+				startCategory = currentCategory.name;
+				break;
+			} catch (ex) {
+				retryNum++;
+				continue;
+			}
+		}
+
 		startQuery = `${startCategory} in ${startCity}, Finland`;
 	}
 
@@ -695,13 +729,14 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			}
 
 			const data = await getPageData(link, page);
+			const excludedPlaces = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man',
+				'Australia', 'Kong', 'Germany', 'Norway', 'Indonesia', '188990', 'France', 'Austria', 'Sweden',
+				'Israel', 'Egypt', 'India', 'Iceland', 'Ireland', 'Netherlands', 'Pakistan', 'Arab', 'Arabia', 'Emirates', 'Bangladesh'];
+
+			if (excludedPlaces.includes(data.cityName)) continue;
 
 			if (Object.hasOwnProperty.call(data, 'placeName')) {
 				const item = await Model.Item.findOne({ where: { name: data.placeName } });
-				const excludeCities = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man', 'Australia', 'Kong', 'Germany', 'Norway', 'Indonesia', '188990'];
-
-				if (excludeCities.includes(data.cityName)) continue;
-
 				if (item == null) {
 					console.log('Save the items');
 
