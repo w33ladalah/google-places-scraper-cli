@@ -460,11 +460,12 @@ const getReviews = async (page, url) => {
 			await delay.range(100, 150);
 		}
 
-		const reviews = await page.$$eval(
-			'div.ODSEW-ShBeI-content',
-			(divs) => Array.from(divs)
-				.map((div) => {
-					try {
+		let reviews = [];
+		try {
+			reviews = await page.$$eval(
+				'div.ODSEW-ShBeI-content',
+				(divs) => Array.from(divs)
+					.map((div) => {
 						const dateText = div.querySelector('.ODSEW-ShBeI-content span.ODSEW-ShBeI-RgZmSc-date').innerText.trim();
 						const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
 						const startTrimIndex = reviewText.indexOf('(Original)') + 10;
@@ -478,7 +479,13 @@ const getReviews = async (page, url) => {
 							length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
 							date: dateText,
 						};
-					} catch (ex) {
+					})
+			);
+		} catch (ex) {
+			reviews = await page.$$eval(
+				'div.ODSEW-ShBeI-content',
+				(divs) => Array.from(divs)
+					.map((div) => {
 						const dateText = div.querySelector('.ODSEW-ShBeI-RgZmSc-date-J42Xof-Hjleke span').innerText.trim();
 						const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
 						const startTrimIndex = reviewText.indexOf('(Original)') + 10;
@@ -492,9 +499,9 @@ const getReviews = async (page, url) => {
 							length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
 							date: dateText,
 						};
-					}
-				})
-		);
+					})
+			);
+		}
 
 		console.log("Reviews before validation: ", reviews);
 
@@ -731,7 +738,8 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			const data = await getPageData(link, page);
 			const excludedPlaces = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man',
 				'Australia', 'Kong', 'Germany', 'Norway', 'Indonesia', '188990', 'France', 'Austria', 'Sweden',
-				'Israel', 'Egypt', 'India', 'Iceland', 'Ireland', 'Netherlands', 'Pakistan', 'Arab', 'Arabia', 'Emirates', 'Bangladesh'];
+				'Israel', 'Egypt', 'India', 'Iceland', 'Ireland', 'Netherlands', 'Pakistan', 'Arab', 'Arabia', 'Emirates', 'Bangladesh',
+				'Africa', 'Croatia', 'Lithuania', 'AS', 'Oman'];
 
 			if (excludedPlaces.includes(data.cityName)) continue;
 
@@ -753,7 +761,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 						image: data.main_image,
 						phone: data.phone,
 						date_created: moment().format('YYYY-MM-DD HH:mm:ss').toString(),
-						item_city: data.cityName || city,
+						item_city: data.cityName,
 						link: link,
 					});
 
@@ -765,15 +773,20 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 							name: data.cityName,
 						});
 					}
-					await Model.City.create({
-						cities_names_id: cityName.id || city,
-						items_id: item.id,
-					});
+
 
 					let categoryName = await Model.CategoryName.findOne({ where: { name: data.category } });
 					if (categoryName == null && data.category != '') {
 						categoryName = await Model.CategoryName.create({
 							name: data.category,
+						});
+					}
+
+					const existingItemCity = await Model.City.findOne({ where: { items_id: item.id } });
+					if (existingItemCity == null) {
+						await Model.City.create({
+							cities_names_id: cityName.id || city,
+							items_id: item.id,
 						});
 					}
 
@@ -818,7 +831,6 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 				}
 			}
 
-			no++;
 			successCount++;
 		} catch (ex) {
 			console.error(ex);
@@ -826,6 +838,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			continue;
 		}
 
+		no++;
 		await delay.range(100, 200);
 	}
 
