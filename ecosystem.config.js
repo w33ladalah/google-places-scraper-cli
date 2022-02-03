@@ -9,10 +9,11 @@ module.exports = {
       watch_delay: 500,
       // Specify which folder to ignore
       ignore_watch: ["node_modules", "src"],
-      max_memory_restart: '1000M',
+      max_memory_restart: '300M',
       cron_restart: '0 */4 * * *',
       error_file: 'logs/gmap-1-out.log',
       out_file: 'logs/gmap-1-out.log',
+      exp_backoff_restart_delay: 100,
     },
     {
       name: 'gmap-scraper-2',
@@ -23,10 +24,11 @@ module.exports = {
       watch_delay: 500,
       // Specify which folder to ignore
       ignore_watch: ["node_modules", "src"],
-      max_memory_restart: '1000M',
+      max_memory_restart: '300M',
       cron_restart: '0 */4 * * *',
       error_file: 'logs/gmap-2-out.log',
       out_file: 'logs/gmap-2-out.log',
+      exp_backoff_restart_delay: 1000,
     },
     // {
     //   name: 'gmap-scraper-3',

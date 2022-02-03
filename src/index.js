@@ -484,23 +484,31 @@ const getReviews = async (page, url) => {
 		} catch (ex) {
 			reviews = await page.$$eval(
 				'div.ODSEW-ShBeI-content',
-				(divs) => Array.from(divs)
-					.map((div) => {
-						const dateText = div.querySelector('.ODSEW-ShBeI-RgZmSc-date-J42Xof-Hjleke span').innerText.trim();
-						const reviewText = div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-text').innerText.trim();
+				(divs) => {
+					const reviewsHTMLs = Array.from(divs).map((div) => div.innerHTML);
+					const reviewItems = [];
+					for (let i = 0; i < reviewsHTMLs.length; i++) {
+						const reviewHTML = reviewsHTMLs[i];
+						const parser = new DOMParser();
+						const reviewDOM = parser.parseFromString(reviewHTML, 'text/html');
+						const reviewText = reviewDOM.querySelector('.ODSEW-ShBeI-ShBeI-content').innerText;
 						const startTrimIndex = reviewText.indexOf('(Original)') + 10;
+						const dateText = reviewDOM.querySelector('.ODSEW-ShBeI-RgZmSc-date-J42Xof-Hjleke span:nth-child(1)').innerText.trim();
 
-						return {
-							author: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
-							title: div.querySelector('.ODSEW-ShBeI-content .ODSEW-ShBeI-title span').innerText.trim(),
-							avatar: div.querySelector('a.ODSEW-ShBeI-t1uDwd-hSRGPd img').getAttribute('src').trim(),
-							rating: div.querySelector('.ODSEW-ShBeI-RGxYjb-wcwwM').innerText().split('/')[0] || 1,
+						reviewItems.push({
+							author: reviewDOM.querySelector('.ODSEW-ShBeI-title span').innerText.trim(),
+							title: reviewDOM.querySelector('.ODSEW-ShBeI-title span').innerText.trim(),
+							avatar: reviewDOM.querySelector('img.ODSEW-ShBeI-t1uDwd-HiaYvf').getAttribute('src').trim(),
+							rating: reviewDOM.querySelector('.ODSEW-ShBeI-RGxYjb-wcwwM').innerText.replace('/5', '').trim(),
 							text: reviewText.indexOf('(Original)') === -1 ? reviewText.trim() : reviewText.substring(startTrimIndex).trim(),
 							length: reviewText.indexOf('(Original)') === -1 ? reviewText.trim().length : reviewText.substring(startTrimIndex).trim().length,
 							date: dateText,
-						};
-					})
+						});
+					}
+					return reviewItems;
+				}
 			);
+
 		}
 
 		console.log("Reviews before validation: ", reviews);
@@ -636,6 +644,19 @@ const slugify = (str) => {
 	return str;
 }
 
+const doSkipPlace = async (address='') => {
+	const excludedPlaces = await Model.FilteredPlace.findAll();
+	// console.log(excludedPlaces);
+	for (let i = 0; i < excludedPlaces.length; i++) {
+		const excludedPlace = excludedPlaces[i].name;
+		if (address.includes(excludedPlace)) {
+			console.log('Skipped '+address);
+			return true;
+		}
+	}
+	return false;
+}
+
 async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	const page = await _puppeteerWrapper.newPage();
 
@@ -736,12 +757,9 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 			}
 
 			const data = await getPageData(link, page);
-			const excludedPlaces = ['States', 'Canada', 'Japan', 'Kingdom', 'Zealand', 'Estonia', 'Jakarta', 'Man',
-				'Australia', 'Kong', 'Germany', 'Norway', 'Indonesia', '188990', 'France', 'Austria', 'Sweden',
-				'Israel', 'Egypt', 'India', 'Iceland', 'Ireland', 'Netherlands', 'Pakistan', 'Arab', 'Arabia', 'Emirates', 'Bangladesh',
-				'Africa', 'Croatia', 'Lithuania', 'AS', 'Oman'];
+			const isSkipped = await doSkipPlace(data.address);
 
-			if (excludedPlaces.includes(data.cityName)) continue;
+			if (isSkipped) continue;
 
 			if (Object.hasOwnProperty.call(data, 'placeName')) {
 				const item = await Model.Item.findOne({ where: { name: data.placeName } });
@@ -791,7 +809,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 					}
 
 					const existingItemCategory = await Model.Category.findOne({ where: { items_id: item.id } });
-					if (existingItemCategory == null) {
+					if (existingItemCategory == null && categoryName) {
 						await Model.Category.create({
 							categories_names_id: categoryName.id,
 							items_id: item.id,

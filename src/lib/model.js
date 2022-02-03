@@ -269,6 +269,17 @@ export const ScrapingProgress = sequelize.define('ScrapingProgress', {
 	tableName: 'scraping_progress'
 });
 
+export const FilteredPlace = sequelize.define('FilteredPlace', {
+	// Model attributes are defined here
+	name: {
+		type: DataTypes.STRING,
+		allowNull: true,
+	},
+}, {
+	timestamps: false,
+	tableName: 'filtered_places'
+});
+
 export default {
 	CategoryName,
 	Category,
@@ -279,4 +290,5 @@ export default {
 	CityName,
 	City,
 	ScrapingProgress,
+	FilteredPlace,
 };

@@ -1,7 +1,7 @@
-import puppeteer from 'puppeteer-core';
-
 import fs from 'fs';
 import JSONdb from 'simple-json-db';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 /**
  * chromePath:  the path of the chrome executable in our pc
@@ -38,7 +38,10 @@ export class PuppeteerWrapper {
         const args = [];
         if (this._options.width) {
             args.push(`--window-size=${this._options.width},${this._options.height}`);
+            args.push('--no-sandbox');
         }
+
+        puppeteer.use(StealthPlugin());
 
         this._logger.logInfo("Setting up puppeteer...");
         this.browser = await puppeteer.launch({
@@ -63,7 +66,7 @@ export class PuppeteerWrapper {
 
         // page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36');
 
-        await this._intercept(page);
+        await this._initCDPSession(page);
 
         if (this._options.width) {
             await page._client.send('Emulation.clearDeviceMetricsOverride');
@@ -71,7 +74,7 @@ export class PuppeteerWrapper {
 
         this.browser.on('targetcreated', async (target) => {
             const page = await target.page();
-            this._intercept(page);
+            this._initCDPSession(page);
         });
 
         return page;
@@ -80,7 +83,7 @@ export class PuppeteerWrapper {
     //#endregion
 
     //#region Helpers
-    async _intercept(page) {
+    async _initCDPSession(page) {
         try{
             const client = await page.target().createCDPSession();
 

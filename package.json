@@ -9,6 +9,7 @@
     "start-cli": "npm run babel_build && node ./babel-output/index.js",
     "start-pm2": "npm run babel_build && pm2 start ecosystem.config.js --time",
     "start-validate-city": "npm run babel_build && node ./babel-output/validate-cities.js",
+    "start-test-url": "npm run babel_build && node ./babel-output/test-url.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Hendro Wibowo (hendrowimail@gmail.com)",
@@ -23,8 +24,10 @@
     "md5": "^2.3.0",
     "moment": "^2.29.1",
     "mysql2": "^2.3.3",
-    "puppeteer": "^12.0.1",
+    "puppeteer": "^13.1.2",
     "puppeteer-core": "^10.2.0",
+    "puppeteer-extra": "^3.2.3",
+    "puppeteer-extra-plugin-stealth": "^2.9.0",
     "sequelize": "^6.12.5",
     "simple-json-db": "^1.2.3",
     "yargs": "^17.3.1"
