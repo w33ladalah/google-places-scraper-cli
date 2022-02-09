@@ -5,3 +5,4 @@
 settings.json
 yarn-error.log
 gscraper.code-workspace
+.env

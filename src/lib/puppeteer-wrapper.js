@@ -36,10 +36,16 @@ export class PuppeteerWrapper {
         }
 
         const args = [];
-        if (this._options.width) {
-            args.push(`--window-size=${this._options.width},${this._options.height}`);
-            args.push('--no-sandbox');
+
+        let width = this._options.width || 800;
+        let height = this._options.height || 600;
+        if (this._options.randomizeBrowserDimension === true) {
+            width = Math.ceil(Math.random() * (1366 - 500) + 500);
+            height = Math.ceil(Math.random() * (768 - 300) + 300);
         }
+
+        args.push(`--window-size=${width},${height}`);
+        args.push('--no-sandbox');
 
         puppeteer.use(StealthPlugin());
 

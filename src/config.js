@@ -1,3 +1,6 @@
+import 'dotenv/config';
+
+const __ENV = process.env;
 const APP_NAME = "GMap Scrapper";
 const APP_VERSION = "1.0.0";
 const CSS_SELECTOR = {
@@ -11,10 +14,13 @@ const CSS_SELECTOR = {
 	'reviews_btn': 'button[jsaction="pane.reviewlist.goToReviews"]',
 	'reviews_item': 'div[jsaction="mouseover:pane.review.in;mouseout:pane.review.out"]',
 };
-const DB_HOST = 'localhost';
-const DB_NAME = 'finland_places';
-const DB_USER = 'root';
-const DB_PASSWORD = 'rootpassword';
+const DB_HOST = __ENV['DB_HOST'];
+const DB_NAME = __ENV['DB_NAME'];
+const DB_USER = __ENV['DB_USER'];
+const DB_PASSWORD = __ENV['DB_PASSWORD'];
+const MODEM_URL = __ENV['MODEM_URL'] || 'http://192.168.1.1';
+const MODEM_USER = __ENV['MODEM_USER'] || 'admin';
+const MODEM_PASSWORD = __ENV['MODEM_PASSWORD'] || 'admin';
 
 export {
 	APP_NAME,
@@ -24,4 +30,7 @@ export {
 	DB_NAME,
 	DB_USER,
 	DB_PASSWORD,
+	MODEM_URL,
+	MODEM_USER,
+	MODEM_PASSWORD,
 };

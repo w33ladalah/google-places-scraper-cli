@@ -1,7 +1,7 @@
 import { Logger } from './lib/logger';
 import { FilePaths } from './lib/file-paths.js';
 import { PuppeteerWrapper } from './lib/puppeteer-wrapper';
-import { CSS_SELECTOR as cssSelector } from './config';
+import { CSS_SELECTOR as cssSelector, MODEM_URL, MODEM_USER, MODEM_PASSWORD } from './config';
 import Model from './lib/model';
 import delay from 'delay';
 import datejs from 'date.js';
@@ -12,7 +12,7 @@ import yargs from 'yargs';
 //#region Setup - Dependency Injection-----------------------------------------------
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _puppeteerConfig = { headless: true, width: 1300, height: 780, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, randomizeBrowserDimension: true, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 const _args = yargs.argv;
 //#endregion
@@ -657,6 +657,32 @@ const doSkipPlace = async (address='') => {
 	return false;
 }
 
+const restartModem = async () => {
+	const page = await _puppeteerWrapper.newPage();
+	const loginUrl = MODEM_URL;
+
+	await page.goto(loginUrl);
+	await page.type('input#Frm_Username', MODEM_USER, { delay: 10 });
+	await page.type('input#Frm_Password', MODEM_PASSWORD, { delay: 10 });
+	await page.click('input#LoginId');
+
+	await page.waitForTimeout(1000);
+	await page.waitForSelector('iframe[src*="template.gch"]', { timeout: 3000 });
+
+	const frameHandle = await page.$('iframe[src="template.gch"]');
+	const frame = await frameHandle.contentFrame();
+
+	await frame.click('tr[onclick="javascript:openLink(\'getpage.gch?pid=1002&nextpage=net_tr069_basic_t.gch\')"]');
+	await frame.waitForTimeout(500);
+	await frame.click('tr[onclick=\'javascript:OnMenuItemClick("mmManager","smSysMgr"); openLink("getpage.gch?pid=1002&nextpage=manager_dev_conf_t.gch")\']');
+	await frame.waitForTimeout(500);
+	await frame.click('input[value="Reboot"]');
+	await frame.waitForTimeout(500);
+	await frame.click('input[value="Confirm"]');
+
+	await page.waitForTimeout(2000);
+}
+
 async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	const page = await _puppeteerWrapper.newPage();
 
@@ -679,9 +705,8 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		await changeLocation(countryCode, page);
 		await changeLanguage(page);
 	} catch (ex) {
-		console.log(ex);
-		await page.waitForTimeout(300);
-		await page.reload({ waitUntil: ["networkidle0", "domcontentloaded"] });
+		await restartModem();
+		await page.waitForTimeout(12000);
 	}
 
 	await page.waitForNavigation({ waitUntil: "domcontentloaded" });
