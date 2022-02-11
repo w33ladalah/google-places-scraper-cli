@@ -7,6 +7,8 @@ import delay from 'delay';
 import datejs from 'date.js';
 import moment from 'moment';
 import yargs from 'yargs';
+import JSONdb from 'simple-json-db';
+import axios from 'axios';
 //#endregion
 
 //#region Setup - Dependency Injection-----------------------------------------------
@@ -658,42 +660,54 @@ const doSkipPlace = async (address='') => {
 }
 
 const restartModem = async () => {
-	const page = await _puppeteerWrapper.newPage();
-	const loginUrl = MODEM_URL;
+	const configDb = new JSONdb('./settings.json');
+	const isModemRestarting = configDb.get('is_modem_restarting') || 0;
 
-	await page.goto(loginUrl);
-	await page.type('input#Frm_Username', MODEM_USER, { delay: 10 });
-	await page.type('input#Frm_Password', MODEM_PASSWORD, { delay: 10 });
-	await page.click('input#LoginId');
+	if(isModemRestarting == 0) {
+		configDb.set('is_modem_restarting', 1);
 
-	await page.waitForTimeout(1000);
-	await page.waitForSelector('iframe[src*="template.gch"]', { timeout: 3000 });
+		const puppeteerWrapperModem = new PuppeteerWrapper(_logger, _filePaths, { headless: false, randomizeBrowserDimension: true, args: ['--lang=en-EN,en'] });
+		const pageModem = await puppeteerWrapperModem.newPage();
 
-	const frameHandle = await page.$('iframe[src="template.gch"]');
-	const frame = await frameHandle.contentFrame();
+		await pageModem.goto(MODEM_URL);
+		await pageModem.type('input#Frm_Username', MODEM_USER, { delay: 10 });
+		await pageModem.type('input#Frm_Password', MODEM_PASSWORD, { delay: 10 });
+		await pageModem.click('input#LoginId');
 
-	await frame.click('tr[onclick="javascript:openLink(\'getpage.gch?pid=1002&nextpage=net_tr069_basic_t.gch\')"]');
-	await frame.waitForTimeout(500);
-	await frame.click('tr[onclick=\'javascript:OnMenuItemClick("mmManager","smSysMgr"); openLink("getpage.gch?pid=1002&nextpage=manager_dev_conf_t.gch")\']');
-	await frame.waitForTimeout(500);
-	await frame.click('input[value="Reboot"]');
-	await frame.waitForTimeout(500);
-	await frame.click('input[value="Confirm"]');
+		await pageModem.waitForTimeout(3000);
+		await pageModem.waitForSelector('iframe[src*="template.gch"]', { timeout: 3000 });
 
-	await page.waitForTimeout(2000);
+		const frameHandle = await pageModem.$('iframe[src="template.gch"]');
+		const frame = await frameHandle.contentFrame();
+
+		await frame.click('tr[onclick="javascript:openLink(\'getpage.gch?pid=1002&nextpage=net_tr069_basic_t.gch\')"]');
+		await frame.waitForTimeout(1000);
+		await frame.click('tr[onclick=\'javascript:OnMenuItemClick("mmManager","smSysMgr"); openLink("getpage.gch?pid=1002&nextpage=manager_dev_conf_t.gch")\']');
+		await frame.waitForTimeout(1000);
+		await frame.click('input[value="Reboot"]');
+		await frame.waitForTimeout(1000);
+		await frame.click('input[value="Confirm"]');
+
+		let waitForInternetConnection = setInterval(async () => {
+			try {
+				const modem = await axios.get('https://google.com');
+
+				if(modem.status == 200) {
+					configDb.set('is_modem_restarting', 0);
+
+					clearInterval(waitForInternetConnection);
+				}
+			} catch (ex) {
+				console.log('Modem restarting...');
+			}
+		}, 3000);
+	}
 }
 
 async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	const page = await _puppeteerWrapper.newPage();
 
 	const gmapInitUrl = "https://www.google.com/maps";
-
-	// page.on('response', response => {
-	// 	const status = response.status();
-	// 	if ((status >= 300) && (status <= 399)) {
-	// 		console.log('Redirect from', response.url(), 'to', response.headers()['location'])
-	// 	}
-	// });
 
 	page.on('dialog', async dialog => {
 		await delay(300);
@@ -706,7 +720,6 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 		await changeLanguage(page);
 	} catch (ex) {
 		await restartModem();
-		await page.waitForTimeout(12000);
 	}
 
 	await page.waitForNavigation({ waitUntil: "domcontentloaded" });
