@@ -1,7 +1,7 @@
 import fs from 'fs';
 import JSONdb from 'simple-json-db';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import puppeteer from 'puppeteer-core';
+// import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 /**
  * chromePath:  the path of the chrome executable in our pc
@@ -39,15 +39,25 @@ export class PuppeteerWrapper {
 
         let width = this._options.width || 800;
         let height = this._options.height || 600;
-        if (this._options.randomizeBrowserDimension === true) {
-            width = Math.ceil(Math.random() * (1366 - 500) + 500);
-            height = Math.ceil(Math.random() * (768 - 300) + 300);
+
+        let x = 100;
+        let y = 100;
+
+        if (this._options.randomizeBrowserPosition === true) {
+            x = Math.ceil(Math.random() * 1366);
+            y = Math.ceil(Math.random() * 768);
         }
 
+        const datahenTillUrl = this.db.get('datahen_till_url');
+
         args.push(`--window-size=${width},${height}`);
+        args.push(`--window-position=${x},${y}`);
+        // args.push(`--proxy-server=${datahenTillUrl}`);
+        // args.push('--ignore-certificate-errors');
+        // args.push('--ignore-certificate-errors-spki-list');
         args.push('--no-sandbox');
 
-        puppeteer.use(StealthPlugin());
+        // puppeteer.use(StealthPlugin());
 
         this._logger.logInfo("Setting up puppeteer...");
         this.browser = await puppeteer.launch({
@@ -70,7 +80,9 @@ export class PuppeteerWrapper {
 
         const page = await this.browser.newPage();
 
-        // page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36');
+        // await page.setExtraHTTPHeaders({
+        //     'X-DH-Cache-Freshness': 'now'
+        // });
 
         await this._initCDPSession(page);
 

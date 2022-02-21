@@ -14,12 +14,13 @@ import axios from 'axios';
 //#region Setup - Dependency Injection-----------------------------------------------
 const _logger = new Logger();
 const _filePaths = new FilePaths(_logger, "gmap-scrapper");
-const _puppeteerConfig = { headless: true, randomizeBrowserDimension: true, args: ['--lang=en-EN,en'] };
+const _puppeteerConfig = { headless: true, width: 800, height: 600, args: ['--lang=en-EN,en'] };
 const _puppeteerWrapper = new PuppeteerWrapper(_logger, _filePaths, _puppeteerConfig);
 const _args = yargs.argv;
 //#endregion
 
 const countryCode = 'FI';
+const configDb = new JSONdb('./settings.json');
 
 //#region Main ---------------------------------------------------------------------
 
@@ -179,9 +180,17 @@ const saveItemWithoutReviews = async (link) => {
 	await Model.ItemNoReview.create({link});
 }
 
-async function getPageData(url, page) {
+async function getPageData(url, page, no) {
+	console.log('#' + no + ' Processing: "' + url + '...');
+
+	const isModemRestarting = configDb.get('is_modem_restarting') || 0;
+
+	// if (isModemRestarting == 1) {
+	// 	await page.waitForTimeout(100000);
+	// }
+
 	await page.goto(url);
-	await page.waitForNavigation({ timeout: 5000 });
+	await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
 
 	//Reviews
 	let reviewCount = 0;
@@ -203,26 +212,26 @@ async function getPageData(url, page) {
 			const allReviews = await getReviews(page, url);
 
 			try {
-				await page.goBack({ timeout: 3000, waitUntil: 'networkidle0' });
+				await page.goBack({ waitUntil: 'domcontentloaded' });
 			} catch (ex) {
-				await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { timeout: 3000, waitUntil: 'networkidle2' });
+				await page.waitForSelector('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ', { waitUntil: 'load', timeout: 2000 });
 				await page.click('button.VfPpkd-icon-LgbsSe.yHy1rc.eT1oJ');
 			} finally {
-				await page.goto(url, {timeout: 10000});
+				await page.goto(url, { waitUntil: 'load', timeout: 2000 });
 			}
 
 			if (allReviews.length == 0) {
 				return {};
 			}
 
-			await page.waitForNavigation({ waitUntil: "load", timeout: 5000 });
+			await page.waitForNavigation({ waitUntil: "load", timeout: 2000 });
 
 			console.log("Reviews after validation: ", allReviews);
 
-			let placeName = ''
+			let placeName = '';
 			try {
 				//Shop Name
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span", {timeout: 5000});
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-title span", { waitUntil: 'load', timeout: 2000 });
 				placeName = await page.$eval(
 					cssSelector['shop_name'],
 					(name) => name.textContent
@@ -235,7 +244,7 @@ async function getPageData(url, page) {
 
 			let category = ''
 			try {
-				await page.waitForSelector('button[jsaction="pane.rating.category"]', { timeout: 5000 });
+				await page.waitForSelector('button[jsaction="pane.rating.category"]', { waitUntil: 'load', timeout: 2000 });
 				category = await page.$eval(
 					'button[jsaction="pane.rating.category"]',
 					(category) => category.textContent
@@ -246,7 +255,7 @@ async function getPageData(url, page) {
 
 			let reviewRating = '';
 			try {
-				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf", { timeout: 5000 });
+				await page.waitForSelector(".x3AX1-LfntMc-header-title-ij8cu-haAclf", { waitUntil: 'load', timeout: 2000 });
 				reviewRating = await page.$eval(
 					cssSelector['rating'],
 					(rating) => rating.textContent
@@ -259,7 +268,7 @@ async function getPageData(url, page) {
 			let address = '';
 			let cityName = '';
 			try {
-				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)", { timeout: 5000 });
+				await page.waitForSelector(".QSFF4-text.gm2-body-2:nth-child(1)", { waitUntil: 'load', timeout: 2000 });
 				address = await page.$$eval(
 					cssSelector['address'],
 					(divs) =>
@@ -284,7 +293,7 @@ async function getPageData(url, page) {
 			let website = '';
 			try {
 				//Website
-				await page.waitForSelector(cssSelector['website'], { timeout: 1000 });
+				await page.waitForSelector(cssSelector['website'], { waitUntil: 'load', timeout: 1000 });
 
 				website = await page.$$eval(
 					cssSelector['website'],
@@ -418,9 +427,9 @@ const getReviews = async (page, url) => {
 	try {
 		const btnTriggerSelector = 'button[jsaction="pane.rating.moreReviews"]';
 
-		await page.waitForSelector(btnTriggerSelector, { timeout: 1000 });
+		await page.waitForSelector(btnTriggerSelector, { waitUntil: 'load', timeout: 1000 });
 		await page.click(btnTriggerSelector);
-		await page.waitForNavigation({ waitUntil: "networkidle0" });
+		await page.waitForNavigation({ waitUntil: "domcontentloaded" });
 
 		let newScrollHeight = 0;
 		let scrollHeight = _puppeteerConfig['height'] - 200;
@@ -428,7 +437,7 @@ const getReviews = async (page, url) => {
 		let divSelector = '#pane .siAUzd-neVct.section-scrollbox.cYB2Ge-oHo7ed.cYB2Ge-ti6hGc';
 
 		while (true) {
-			await page.waitForSelector(divSelector, { timeout: 1000 });
+			await page.waitForSelector(divSelector, { waitUntil: 'load', timeout: 1000 });
 
 			await page.evaluate(
 				(scrollHeight, divSelector) =>
@@ -542,7 +551,7 @@ const getWorkHours = async (page) => {
 	try {
 		const tableSelector = 'table.y0skZc-jyrRxf-Tydcue.NVpwyf-qJTHM-ibL1re';
 
-		await page.waitForSelector(tableSelector, { timeout: 1000 });
+		await page.waitForSelector(tableSelector, { waitUntil: 'load', timeout: 1000 });
 
 		const workHours = await page.$$eval(
 			`${tableSelector} tr`,
@@ -660,7 +669,6 @@ const doSkipPlace = async (address='') => {
 }
 
 const restartModem = async () => {
-	const configDb = new JSONdb('./settings.json');
 	const isModemRestarting = configDb.get('is_modem_restarting') || 0;
 
 	if(isModemRestarting == 0) {
@@ -692,10 +700,12 @@ const restartModem = async () => {
 			try {
 				const modem = await axios.get('https://google.com');
 
-				if(modem.status == 200) {
+				if(modem.status === 200) {
 					configDb.set('is_modem_restarting', 0);
 
 					clearInterval(waitForInternetConnection);
+				} else {
+					throw new Error("Still not connected to internet!");
 				}
 			} catch (ex) {
 				console.log('Modem restarting...');
@@ -715,7 +725,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	});
 
 	try {
-		await page.goto(gmapInitUrl, { waitUntil: 'networkidle0' });
+		await page.goto(gmapInitUrl, { waitUntil: 'domcontentloaded' });
 		await changeLocation(countryCode, page);
 		await changeLanguage(page);
 	} catch (ex) {
@@ -785,8 +795,6 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 	for (let link of uniqueLinks) {
 		if (maxLinks !== 0 && no > maxLinks) break;
 
-		console.log('#' + no + ' Processing: "' + link + '...');
-
 		try {
 			const itemByLink = await Model.Item.findOne({ where: { link: link } });
 			if(itemByLink) {
@@ -794,7 +802,7 @@ async function GMapScrapper(searchQuery, maxLinks = 0, city, category) {
 				continue;
 			}
 
-			const data = await getPageData(link, page);
+			const data = await getPageData(link, page, no);
 			const isSkipped = await doSkipPlace(data.address);
 
 			if (isSkipped) continue;
